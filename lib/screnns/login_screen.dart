@@ -15,7 +15,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   bool _isLoading = false;
-  bool _isAdminLogin = false; // Track login type
 
   @override
   void dispose() {
@@ -32,43 +31,47 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Simulate login delay
       Future.delayed(const Duration(seconds: 1), () {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
 
-        if (_isAdminLogin) {
-          // Admin login
+          // Check if admin credentials
           if (_usernameController.text == 'admin' && 
               _passwordController.text == '12345678') {
+            // Admin login - redirect to dashboard
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (context) => const DashboardScreen()),
             );
           } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('بيانات غير صحيحة. استخدم admin/12345678'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        } else {
-          // Patient login - any credentials work for demo
-          if (_usernameController.text.isNotEmpty && 
-              _passwordController.text.isNotEmpty) {
+            // Patient login - redirect to hospital screen
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (context) => const HospitalScreen()),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('يرجى إدخال اسم المستخدم وكلمة المرور'),
-                backgroundColor: Colors.red,
-              ),
             );
           }
         }
       });
     }
+  }
+
+  void _registerWithGoogle() {
+    // TODO: Implement Google sign-in
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('تسجيل الدخول عبر Google قريباً'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
+  void _registerWithUsername() {
+    // TODO: Navigate to registration screen
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('إنشاء حساب جديد قريباً'),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
   @override
@@ -135,81 +138,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 32),
-
-                        // Login type selector
-                        Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey.shade300),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _isAdminLogin = false;
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: !_isAdminLogin 
-                                          ? const Color(0xFF1976D2) 
-                                          : Colors.transparent,
-                                      borderRadius: const BorderRadius.only(
-                                        topLeft: Radius.circular(12),
-                                        bottomLeft: Radius.circular(12),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      'مريض',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: !_isAdminLogin 
-                                            ? Colors.white 
-                                            : Colors.grey,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      _isAdminLogin = true;
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: _isAdminLogin 
-                                          ? const Color(0xFF1976D2) 
-                                          : Colors.transparent,
-                                      borderRadius: const BorderRadius.only(
-                                        topRight: Radius.circular(12),
-                                        bottomRight: Radius.circular(12),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      'مدير',
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: _isAdminLogin 
-                                            ? Colors.white 
-                                            : Colors.grey,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
 
                         // Username field
                         TextFormField(
@@ -300,13 +228,75 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     ),
                                   )
-                                : Text(
-                                    _isAdminLogin ? 'تسجيل دخول المدير' : 'تسجيل دخول المريض',
-                                    style: const TextStyle(
+                                : const Text(
+                                    'تسجيل الدخول',
+                                    style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Divider
+                        Row(
+                          children: [
+                            Expanded(child: Divider(color: Colors.grey.shade300)),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: Text(
+                                'أو',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            Expanded(child: Divider(color: Colors.grey.shade300)),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Google Sign-in button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: OutlinedButton.icon(
+                            onPressed: _registerWithGoogle,
+                            icon: const Icon(Icons.g_mobiledata, size: 24),
+                            label: const Text(
+                              'تسجيل الدخول عبر Google',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.grey),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Register with username button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: OutlinedButton.icon(
+                            onPressed: _registerWithUsername,
+                            icon: const Icon(Icons.person_add, size: 20),
+                            label: const Text(
+                              'إنشاء حساب جديد',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFF1976D2)),
+                              foregroundColor: const Color(0xFF1976D2),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -341,11 +331,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ],
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                _isAdminLogin 
-                                    ? 'المدير: admin / 12345678'
-                                    : 'المريض: أي بيانات صحيحة',
-                                style: const TextStyle(
+                              const Text(
+                                'المدير: admin / 12345678\nالمريض: أي بيانات صحيحة',
+                                style: TextStyle(
                                   color: Colors.blue,
                                   fontSize: 12,
                                 ),
