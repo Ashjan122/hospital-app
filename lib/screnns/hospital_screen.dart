@@ -2,6 +2,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/specialties_screen.dart';
+import 'package:hospital_app/screnns/login_screen.dart';
 
 class HospitalScreen extends StatelessWidget {
   const HospitalScreen({super.key});
@@ -37,6 +38,17 @@ class HospitalScreen extends StatelessWidget {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Color.fromARGB(255, 78, 17, 175)),
+            onPressed: () {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
+            },
+          ),
+        ],
       ),
       body: FutureBuilder<List<QueryDocumentSnapshot>>(
         future: fetchFacilities(),
