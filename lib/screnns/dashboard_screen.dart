@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'login_screen.dart';
+import 'package:hospital_app/screnns/login_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -16,38 +16,15 @@ class DashboardScreen extends StatelessWidget {
           ),
         ),
         backgroundColor: const Color(0xFF1976D2),
+        foregroundColor: Colors.white,
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
+            icon: const Icon(Icons.logout),
             onPressed: () {
-              // Show logout confirmation dialog
-              showDialog(
-                context: context,
-                builder: (BuildContext context) {
-                  return AlertDialog(
-                    title: const Text('Logout'),
-                    content: const Text('Are you sure you want to logout?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                              builder: (context) => const LoginScreen(),
-                            ),
-                            (route) => false,
-                          );
-                        },
-                        child: const Text('Logout'),
-                      ),
-                    ],
-                  );
-                },
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
               );
             },
           ),
@@ -65,94 +42,118 @@ class DashboardScreen extends StatelessWidget {
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              // Welcome Section
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Welcome, Admin!',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Manage your hospital operations',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white.withOpacity(0.8),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Dashboard Cards
-              Expanded(
-                child: Container(
-                  decoration: const BoxDecoration(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Welcome section
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(30),
-                      topRight: Radius.circular(30),
-                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: GridView.count(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                      children: [
-                        _buildDashboardCard(
-                          context,
-                          'Doctors Schedule',
-                          Icons.schedule,
-                          Colors.blue,
-                          () {
-                            _showFeatureDialog(context, 'Doctors Schedule');
-                          },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Welcome, Admin!',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1976D2),
                         ),
-                        _buildDashboardCard(
-                          context,
-                          'Users',
-                          Icons.people,
-                          Colors.green,
-                          () {
-                            _showFeatureDialog(context, 'Users Management');
-                          },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Manage your hospital operations',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[600],
                         ),
-                        _buildDashboardCard(
-                          context,
-                          'Booking',
-                          Icons.book_online,
-                          Colors.orange,
-                          () {
-                            _showFeatureDialog(context, 'Booking System');
-                          },
-                        ),
-                        _buildDashboardCard(
-                          context,
-                          'Analytics',
-                          Icons.analytics,
-                          Colors.purple,
-                          () {
-                            _showFeatureDialog(context, 'Analytics Dashboard');
-                          },
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 24),
+
+                // Grid section
+                Expanded(
+                  child: GridView.count(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    children: [
+                      _buildDashboardCard(
+                        context,
+                        'Doctors Schedule',
+                        Icons.schedule,
+                        Colors.blue,
+                        () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Doctors Schedule - Navigate to doctors screen'),
+                              backgroundColor: Colors.blue,
+                            ),
+                          );
+                        },
+                      ),
+                      _buildDashboardCard(
+                        context,
+                        'Users',
+                        Icons.people,
+                        Colors.green,
+                        () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Users - Navigate to users screen'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        },
+                      ),
+                      _buildDashboardCard(
+                        context,
+                        'Booking',
+                        Icons.calendar_today,
+                        Colors.orange,
+                        () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Booking - Navigate to booking screen'),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                        },
+                      ),
+                      _buildDashboardCard(
+                        context,
+                        'Reports',
+                        Icons.analytics,
+                        Colors.purple,
+                        () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Reports feature coming soon!'),
+                              backgroundColor: Colors.purple,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -174,38 +175,35 @@ class DashboardScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.2),
+              color: Colors.black.withOpacity(0.1),
               blurRadius: 10,
-              offset: const Offset(0, 4),
+              offset: const Offset(0, 5),
             ),
           ],
-          border: Border.all(
-            color: color.withOpacity(0.1),
-            width: 1,
-          ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(16),
+              width: 60,
+              height: 60,
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
-                shape: BoxShape.circle,
+                borderRadius: BorderRadius.circular(30),
               ),
               child: Icon(
                 icon,
-                size: 40,
+                size: 30,
                 color: color,
               ),
             ),
             const SizedBox(height: 16),
             Text(
               title,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
-                color: Colors.grey[800],
+                color: Colors.black87,
               ),
               textAlign: TextAlign.center,
             ),
@@ -220,24 +218,6 @@ class DashboardScreen extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  void _showFeatureDialog(BuildContext context, String featureName) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(featureName),
-          content: Text('$featureName feature is coming soon!'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        );
-      },
     );
   }
 }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'dashboard_screen.dart';
+import 'package:hospital_app/screnns/dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,10 +14,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
   bool _isLoading = false;
-
-  // Demo credentials
-  static const String demoUsername = 'admin';
-  static const String demoPassword = '12345678';
 
   @override
   void dispose() {
@@ -38,16 +34,13 @@ class _LoginScreenState extends State<LoginScreen> {
           _isLoading = false;
         });
 
-        if (_usernameController.text == demoUsername &&
-            _passwordController.text == demoPassword) {
-          // Navigate to dashboard
+        // Check demo credentials
+        if (_usernameController.text == 'admin' && 
+            _passwordController.text == '12345678') {
           Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => const DashboardScreen(),
-            ),
+            MaterialPageRoute(builder: (context) => const DashboardScreen()),
           );
         } else {
-          // Show error message
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Invalid credentials. Use admin/12345678'),
@@ -89,17 +82,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Hospital Icon
+                        // Logo/Icon
                         Container(
-                          padding: const EdgeInsets.all(16),
+                          width: 80,
+                          height: 80,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1976D2).withOpacity(0.1),
-                            shape: BoxShape.circle,
+                            color: const Color(0xFF1976D2),
+                            borderRadius: BorderRadius.circular(40),
                           ),
                           child: const Icon(
                             Icons.local_hospital,
-                            size: 64,
-                            color: Color(0xFF1976D2),
+                            size: 40,
+                            color: Colors.white,
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -108,14 +102,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         const Text(
                           'Hospital Management',
                           style: TextStyle(
-                            fontSize: 28,
+                            fontSize: 24,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF1976D2),
                           ),
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'Login to continue',
+                          'Sign in to continue',
                           style: TextStyle(
                             fontSize: 16,
                             color: Colors.grey,
@@ -123,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 32),
 
-                        // Username Field
+                        // Username field
                         TextFormField(
                           controller: _usernameController,
                           decoration: InputDecoration(
@@ -149,7 +143,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Password Field
+                        // Password field
                         TextFormField(
                           controller: _passwordController,
                           obscureText: !_isPasswordVisible,
@@ -188,15 +182,48 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 24),
 
-                        // Demo Credentials Info
+                        // Login button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _login,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1976D2),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Text(
+                                    'Login',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Demo credentials hint
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.1),
+                            color: Colors.blue.shade50,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: Colors.blue.withOpacity(0.3),
-                            ),
+                            border: Border.all(color: Colors.blue.shade200),
                           ),
                           child: const Row(
                             children: [
@@ -216,41 +243,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Login Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _login,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1976D2),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  )
-                                : const Text(
-                                    'Login',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
                           ),
                         ),
                       ],
