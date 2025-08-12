@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
+import 'package:hospital_app/screnns/admin_doctors_screen.dart';
+import 'package:hospital_app/screnns/admin_specialties_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   final String? centerId;
@@ -85,6 +87,58 @@ class DashboardScreen extends StatelessWidget {
                     crossAxisSpacing: 16,
                     mainAxisSpacing: 16,
                     children: [
+                      _buildDashboardCard(
+                        context,
+                        'الأطباء',
+                        Icons.medical_services,
+                        const Color.fromARGB(255, 78, 17, 175),
+                        () {
+                          if (centerId != null) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => AdminDoctorsScreen(
+                                  centerId: centerId,
+                                  centerName: centerName,
+                                ),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('يرجى تسجيل الدخول أولاً'),
+                                backgroundColor: Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                      _buildDashboardCard(
+                        context,
+                        'التخصصات',
+                        Icons.medical_services,
+                        const Color.fromARGB(255, 78, 17, 175),
+                        () {
+                          if (centerId != null) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => AdminSpecialtiesScreen(
+                                  centerId: centerId!,
+                                  centerName: centerName,
+                                ),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('يرجى تسجيل الدخول أولاً'),
+                                backgroundColor: Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          }
+                        },
+                      ),
                       _buildDashboardCard(
                         context,
                         'جدول الأطباء',

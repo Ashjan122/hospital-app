@@ -11,6 +11,7 @@ class SpecialtiesScreen extends StatelessWidget {
         .collection('medicalFacilities')
         .doc(facilityId)
         .collection('specializations')
+        .where('isActive', isEqualTo: true)
         .get();
 
     return snapshot.docs;
