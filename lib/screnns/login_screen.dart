@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/dashboard_screen.dart';
 import 'package:hospital_app/screnns/hospital_screen.dart';
+import 'package:hospital_app/screnns/register_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -23,54 +26,109 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _login() {
+  Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      // Simulate login delay
-      Future.delayed(const Duration(seconds: 1), () {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-
-          // Check if admin credentials
-          if (_usernameController.text == 'admin' && 
-              _passwordController.text == '12345678') {
-            // Admin login - redirect to dashboard
+      try {
+        // Check if admin credentials
+        if (_usernameController.text == 'admin' && 
+            _passwordController.text == '12345678') {
+          // Admin login - redirect to dashboard
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (context) => const DashboardScreen()),
             );
-          } else {
-            // Patient login - redirect to hospital screen
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => const HospitalScreen()),
-            );
+          }
+        } else {
+          // Patient login with Firebase
+          final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: _usernameController.text.trim(),
+            password: _passwordController.text,
+          );
+
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+
+            // Check if user exists in patients collection
+            final userDoc = await FirebaseFirestore.instance
+                .collection('patients')
+                .doc(userCredential.user!.uid)
+                .get();
+
+            if (mounted) {
+              if (userDoc.exists) {
+                // Patient login - redirect to hospital screen
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (context) => const HospitalScreen()),
+                );
+              } else {
+                // User not found in patients collection
+                await FirebaseAuth.instance.signOut();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('بيانات غير صحيحة'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
           }
         }
-      });
+      } on FirebaseAuthException catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        String errorMessage = 'حدث خطأ أثناء تسجيل الدخول';
+        
+        if (e.code == 'user-not-found') {
+          errorMessage = 'المستخدم غير موجود';
+        } else if (e.code == 'wrong-password') {
+          errorMessage = 'كلمة المرور غير صحيحة';
+        } else if (e.code == 'invalid-email') {
+          errorMessage = 'البريد الإلكتروني غير صحيح';
+        } else if (e.code == 'user-disabled') {
+          errorMessage = 'تم تعطيل هذا الحساب';
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('حدث خطأ: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 
-  void _registerWithGoogle() {
-    // TODO: Implement Google sign-in
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('تسجيل الدخول عبر Google قريباً'),
-        backgroundColor: Colors.orange,
-      ),
-    );
-  }
+
 
   void _registerWithUsername() {
-    // TODO: Navigate to registration screen
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('إنشاء حساب جديد قريباً'),
-        backgroundColor: Colors.green,
-      ),
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => const RegisterScreen()),
     );
   }
 
@@ -78,16 +136,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF1976D2),
-              Color(0xFF1565C0),
-            ],
-          ),
-        ),
+        color: Colors.white,
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -106,59 +155,56 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         // Logo/Icon
                         Container(
-                          width: 80,
-                          height: 80,
+                          width: 100,
+                          height: 100,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1976D2),
-                            borderRadius: BorderRadius.circular(40),
+                            color: const Color.fromARGB(255, 78, 17, 175),
+                            borderRadius: BorderRadius.circular(50),
                           ),
                           child: const Icon(
                             Icons.local_hospital,
-                            size: 40,
+                            size: 50,
                             color: Colors.white,
                           ),
                         ),
                         const SizedBox(height: 24),
                         
                         // Title
-                        const Text(
-                          'نظام إدارة المستشفى',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1976D2),
-                          ),
-                        ),
+                        
                         const SizedBox(height: 8),
                         const Text(
                           'سجل دخولك للمتابعة',
                           style: TextStyle(
                             fontSize: 16,
-                            color: Colors.grey,
+                            color: Color.fromARGB(255, 78, 17, 175),
                           ),
                         ),
                         const SizedBox(height: 32),
 
-                        // Username field
+                        // Email field
                         TextFormField(
                           controller: _usernameController,
+                          keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
-                            labelText: 'اسم المستخدم',
-                            prefixIcon: const Icon(Icons.person),
+                            labelText: 'البريد الإلكتروني',
+                            prefixIcon: const Icon(Icons.email, color: Color.fromARGB(255, 78, 17, 175)),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: const BorderSide(
-                                color: Color(0xFF1976D2),
+                                color: Color.fromARGB(255, 78, 17, 175),
                                 width: 2,
                               ),
                             ),
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال اسم المستخدم';
+                              return 'يرجى إدخال البريد الإلكتروني';
+                            }
+                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                              return 'يرجى إدخال بريد إلكتروني صحيح';
                             }
                             return null;
                           },
@@ -171,12 +217,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           obscureText: !_isPasswordVisible,
                           decoration: InputDecoration(
                             labelText: 'كلمة المرور',
-                            prefixIcon: const Icon(Icons.lock),
+                            prefixIcon: const Icon(Icons.lock, color: Color.fromARGB(255, 78, 17, 175)),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _isPasswordVisible
                                     ? Icons.visibility
                                     : Icons.visibility_off,
+                                color: const Color.fromARGB(255, 78, 17, 175),
                               ),
                               onPressed: () {
                                 setState(() {
@@ -190,7 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: const BorderSide(
-                                color: Color(0xFF1976D2),
+                                color: Color.fromARGB(255, 78, 17, 175),
                                 width: 2,
                               ),
                             ),
@@ -211,7 +258,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: ElevatedButton(
                             onPressed: _isLoading ? null : _login,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1976D2),
+                              backgroundColor: const Color.fromARGB(255, 78, 17, 175),
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -239,107 +286,29 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Divider
+                        // Register link
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Expanded(child: Divider(color: Colors.grey.shade300)),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Text(
-                                'أو',
+                            const Text(
+                              'ليس لديك حساب؟ ',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 14,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _registerWithUsername,
+                              child: const Text(
+                                'إنشاء حساب',
                                 style: TextStyle(
-                                  color: Colors.grey.shade600,
+                                  color: Color.fromARGB(255, 78, 17, 175),
                                   fontSize: 14,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
-                            Expanded(child: Divider(color: Colors.grey.shade300)),
                           ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Google Sign-in button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: OutlinedButton.icon(
-                            onPressed: _registerWithGoogle,
-                            icon: const Icon(Icons.g_mobiledata, size: 24),
-                            label: const Text(
-                              'تسجيل الدخول عبر Google',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Colors.grey),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Register with username button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: OutlinedButton.icon(
-                            onPressed: _registerWithUsername,
-                            icon: const Icon(Icons.person_add, size: 20),
-                            label: const Text(
-                              'إنشاء حساب جديد',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFF1976D2)),
-                              foregroundColor: const Color(0xFF1976D2),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Demo credentials hint
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.blue.shade200),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.info_outline,
-                                    color: Colors.blue,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Text(
-                                    'بيانات تجريبية:',
-                                    style: TextStyle(
-                                      color: Colors.blue,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'المدير: admin / 12345678\nالمريض: أي بيانات صحيحة',
-                                style: TextStyle(
-                                  color: Colors.blue,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
                       ],
                     ),
