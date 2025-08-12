@@ -2,20 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key});
+  final String? centerId;
+  final String? centerName;
+
+  const DashboardScreen({
+    super.key,
+    this.centerId,
+    this.centerName,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Hospital Dashboard',
-          style: TextStyle(
+        title: Text(
+          centerName != null ? 'لوحة تحكم $centerName' : 'لوحة التحكم',
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
         ),
-        backgroundColor: const Color(0xFF1976D2),
+        backgroundColor: const Color.fromARGB(255, 78, 17, 175),
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -31,16 +38,7 @@ class DashboardScreen extends StatelessWidget {
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF1976D2),
-              Color(0xFF1565C0),
-            ],
-          ),
-        ),
+        color: Colors.white,
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -52,30 +50,24 @@ class DashboardScreen extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Colors.grey[100],
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
+                    border: Border.all(color: Colors.grey[300]!),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Welcome, Admin!',
-                        style: TextStyle(
+                      Text(
+                        centerName != null ? 'مرحباً بك في $centerName' : 'مرحباً بك، المدير!',
+                        style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1976D2),
+                          color: Color.fromARGB(255, 78, 17, 175),
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Manage your hospital operations',
+                        'إدارة عمليات المستشفى',
                         style: TextStyle(
                           fontSize: 16,
                           color: Colors.grey[600],
@@ -95,58 +87,94 @@ class DashboardScreen extends StatelessWidget {
                     children: [
                       _buildDashboardCard(
                         context,
-                        'Doctors Schedule',
+                        'جدول الأطباء',
                         Icons.schedule,
-                        Colors.blue,
+                        const Color.fromARGB(255, 78, 17, 175),
                         () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Doctors Schedule - Navigate to doctors screen'),
-                              backgroundColor: Colors.blue,
-                            ),
-                          );
+                          if (centerId != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('جدول الأطباء - $centerName'),
+                                backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('جدول الأطباء'),
+                                backgroundColor: Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          }
                         },
                       ),
                       _buildDashboardCard(
                         context,
-                        'Users',
+                        'المستخدمين',
                         Icons.people,
-                        Colors.green,
+                        const Color.fromARGB(255, 78, 17, 175),
                         () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Users - Navigate to users screen'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
+                          if (centerId != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('المستخدمين - $centerName'),
+                                backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('المستخدمين'),
+                                backgroundColor: Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          }
                         },
                       ),
                       _buildDashboardCard(
                         context,
-                        'Booking',
+                        'الحجوزات',
                         Icons.calendar_today,
-                        Colors.orange,
+                        const Color.fromARGB(255, 78, 17, 175),
                         () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Booking - Navigate to booking screen'),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
+                          if (centerId != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('الحجوزات - $centerName'),
+                                backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('الحجوزات'),
+                                backgroundColor: Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          }
                         },
                       ),
                       _buildDashboardCard(
                         context,
-                        'Reports',
+                        'التقارير',
                         Icons.analytics,
-                        Colors.purple,
+                        const Color.fromARGB(255, 78, 17, 175),
                         () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Reports feature coming soon!'),
-                              backgroundColor: Colors.purple,
-                            ),
-                          );
+                          if (centerId != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('التقارير - $centerName'),
+                                backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('التقارير قريباً'),
+                                backgroundColor: Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          }
                         },
                       ),
                     ],
@@ -171,15 +199,9 @@ class DashboardScreen extends StatelessWidget {
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Colors.grey[100],
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
-            ),
-          ],
+          border: Border.all(color: Colors.grey[300]!),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -209,7 +231,7 @@ class DashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Tap to access',
+              'اضغط للوصول',
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.grey[600],

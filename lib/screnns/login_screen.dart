@@ -33,53 +33,113 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
       try {
-        // Check if admin credentials
-        if (_usernameController.text == 'admin' && 
-            _passwordController.text == '12345678') {
-          // Admin login - redirect to dashboard
-          if (mounted) {
+        // Check if admin credentials (center ID or name)
+        if (_passwordController.text == '12345678') {
+          // Check if username is a center ID or name
+          final centerQuery = await FirebaseFirestore.instance
+              .collection('medicalFacilities')
+              .where('available', isEqualTo: true)
+              .get();
+
+          bool isAdminLogin = false;
+          String centerId = '';
+          String centerName = '';
+
+          for (var doc in centerQuery.docs) {
+            final centerData = doc.data();
+            final centerDocId = doc.id;
+            final centerDocName = centerData['name'] ?? '';
+
+            // Check if username matches center ID or name (case insensitive)
+            if (_usernameController.text.trim() == centerDocId || 
+                _usernameController.text.trim().toLowerCase() == centerDocName.toLowerCase() ||
+                _usernameController.text.trim().toLowerCase().contains(centerDocName.toLowerCase()) ||
+                centerDocName.toLowerCase().contains(_usernameController.text.trim().toLowerCase())) {
+              isAdminLogin = true;
+              centerId = centerDocId;
+              centerName = centerDocName;
+              break;
+            }
+          }
+
+          if (isAdminLogin) {
+            // Admin login - redirect to dashboard with center info
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (context) => DashboardScreen(
+                    centerId: centerId,
+                    centerName: centerName,
+                  ),
+                ),
+              );
+            }
+          } else {
+            // Not a valid center, show error
             setState(() {
               _isLoading = false;
             });
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (context) => const DashboardScreen()),
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('اسم المركز غير موجود أو غير مفعل'),
+                backgroundColor: Colors.red,
+              ),
             );
           }
         } else {
-          // Patient login with Firebase
-          final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-            email: _usernameController.text.trim(),
-            password: _passwordController.text,
-          );
+          // Check if input looks like an email
+          bool isEmail = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(_usernameController.text.trim());
+          
+          if (isEmail) {
+            // Patient login with Firebase
+            final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+              email: _usernameController.text.trim(),
+              password: _passwordController.text,
+            );
 
-          if (mounted) {
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+
+              // Check if user exists in patients collection
+              final userDoc = await FirebaseFirestore.instance
+                  .collection('patients')
+                  .doc(userCredential.user!.uid)
+                  .get();
+
+              if (mounted) {
+                if (userDoc.exists) {
+                  // Patient login - redirect to hospital screen
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (context) => const HospitalScreen()),
+                  );
+                } else {
+                  // User not found in patients collection
+                  await FirebaseAuth.instance.signOut();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('بيانات غير صحيحة'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            }
+          } else {
+            // Not an email, show error
             setState(() {
               _isLoading = false;
             });
-
-            // Check if user exists in patients collection
-            final userDoc = await FirebaseFirestore.instance
-                .collection('patients')
-                .doc(userCredential.user!.uid)
-                .get();
-
-            if (mounted) {
-              if (userDoc.exists) {
-                // Patient login - redirect to hospital screen
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (context) => const HospitalScreen()),
-                );
-              } else {
-                // User not found in patients collection
-                await FirebaseAuth.instance.signOut();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('بيانات غير صحيحة'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('يرجى إدخال بريد إلكتروني صحيح أو اسم مركز مع كلمة المرور الصحيحة'),
+                backgroundColor: Colors.red,
+              ),
+            );
           }
         }
       } on FirebaseAuthException catch (e) {
@@ -181,13 +241,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 32),
 
-                        // Email field
+                        // Username/Email field
                         TextFormField(
                           controller: _usernameController,
-                          keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
-                            labelText: 'البريد الإلكتروني',
-                            prefixIcon: const Icon(Icons.email, color: Color.fromARGB(255, 78, 17, 175)),
+                            labelText: 'البريد الالكتروني',
+                            prefixIcon: const Icon(Icons.person, color: Color.fromARGB(255, 78, 17, 175)),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -201,10 +260,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال البريد الإلكتروني';
-                            }
-                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                              return 'يرجى إدخال بريد إلكتروني صحيح';
+                              return 'يرجى إدخال البريد الإلكتروني أو اسم المركز';
                             }
                             return null;
                           },
