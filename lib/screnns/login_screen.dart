@@ -130,16 +130,64 @@ class _LoginScreenState extends State<LoginScreen> {
               }
             }
           } else {
-            // Not an email, show error
-            setState(() {
-              _isLoading = false;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('يرجى إدخال بريد إلكتروني صحيح أو اسم مركز مع كلمة المرور الصحيحة'),
-                backgroundColor: Colors.red,
-              ),
-            );
+            // Check if it's a user login by name
+            // Search for user in all medical facilities
+            final centersQuery = await FirebaseFirestore.instance
+                .collection('medicalFacilities')
+                .where('available', isEqualTo: true)
+                .get();
+
+            bool userFound = false;
+            String centerId = '';
+            String centerName = '';
+
+            for (var centerDoc in centersQuery.docs) {
+              final usersQuery = await FirebaseFirestore.instance
+                  .collection('medicalFacilities')
+                  .doc(centerDoc.id)
+                  .collection('users')
+                  .where('name', isEqualTo: _usernameController.text.trim())
+                  .where('isActive', isEqualTo: true)
+                  .get();
+
+              if (usersQuery.docs.isNotEmpty) {
+                final userData = usersQuery.docs.first.data();
+                if (userData['password'] == _passwordController.text) {
+                  userFound = true;
+                  centerId = centerDoc.id;
+                  centerName = centerDoc.data()['name'] ?? '';
+                  break;
+                }
+              }
+            }
+
+            if (userFound) {
+              // User login - redirect to dashboard
+              if (mounted) {
+                setState(() {
+                  _isLoading = false;
+                });
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (context) => DashboardScreen(
+                      centerId: centerId,
+                      centerName: centerName,
+                    ),
+                  ),
+                );
+              }
+            } else {
+              // User not found or wrong password
+              setState(() {
+                _isLoading = false;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('اسم المستخدم أو كلمة المرور غير صحيحة'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
           }
         }
       } on FirebaseAuthException catch (e) {
@@ -245,7 +293,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         TextFormField(
                           controller: _usernameController,
                           decoration: InputDecoration(
-                            labelText: 'البريد الالكتروني',
+                            labelText:"البريد الالكتروني",
                             prefixIcon: const Icon(Icons.person, color: Color.fromARGB(255, 78, 17, 175)),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -260,7 +308,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال البريد الإلكتروني أو اسم المركز';
+                              return 'يرجى ادخال البريد الالكتروني';
                             }
                             return null;
                           },

@@ -312,10 +312,10 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
                     padding: const EdgeInsets.all(16),
                     itemCount: filteredSpecialties.length,
                     itemBuilder: (context, index) {
-                      final doc = filteredSpecialties[index];
-                      final data = doc.data() as Map<String, dynamic>;
-                      final specName = data['specName'] ?? 'تخصص غير معروف';
-                      final isActive = data['isActive'] ?? true;
+                                             final doc = filteredSpecialties[index];
+                       final data = doc.data() as Map<String, dynamic>;
+                       final specName = data['specName'] ?? 'تخصص غير معروف';
+                       final isActive = data['isActive'] ?? true;
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -395,7 +395,7 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
                                    ),
                                 ],
                               ),
-
+                              
                             ],
                           ),
                           trailing: PopupMenuButton<String>(

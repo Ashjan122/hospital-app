@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
 import 'package:hospital_app/screnns/admin_doctors_screen.dart';
 import 'package:hospital_app/screnns/admin_specialties_screen.dart';
+import 'package:hospital_app/screnns/admin_doctors_schedule_screen.dart';
+import 'package:hospital_app/screnns/admin_bookings_screen.dart';
+import 'package:hospital_app/screnns/admin_users_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   final String? centerId;
@@ -146,16 +149,19 @@ class DashboardScreen extends StatelessWidget {
                         const Color.fromARGB(255, 78, 17, 175),
                         () {
                           if (centerId != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('جدول الأطباء - $centerName'),
-                                backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => AdminDoctorsScheduleScreen(
+                                  centerId: centerId!,
+                                  centerName: centerName,
+                                ),
                               ),
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('جدول الأطباء'),
+                                content: Text('يرجى تسجيل الدخول أولاً'),
                                 backgroundColor: Color.fromARGB(255, 78, 17, 175),
                               ),
                             );
@@ -169,16 +175,19 @@ class DashboardScreen extends StatelessWidget {
                         const Color.fromARGB(255, 78, 17, 175),
                         () {
                           if (centerId != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('المستخدمين - $centerName'),
-                                backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => AdminUsersScreen(
+                                  centerId: centerId!,
+                                  centerName: centerName,
+                                ),
                               ),
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('المستخدمين'),
+                                content: Text('يرجى تسجيل الدخول أولاً'),
                                 backgroundColor: Color.fromARGB(255, 78, 17, 175),
                               ),
                             );
@@ -192,16 +201,19 @@ class DashboardScreen extends StatelessWidget {
                         const Color.fromARGB(255, 78, 17, 175),
                         () {
                           if (centerId != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('الحجوزات - $centerName'),
-                                backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => AdminBookingsScreen(
+                                  centerId: centerId!,
+                                  centerName: centerName,
+                                ),
                               ),
                             );
                           } else {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('الحجوزات'),
+                                content: Text('يرجى تسجيل الدخول أولاً'),
                                 backgroundColor: Color.fromARGB(255, 78, 17, 175),
                               ),
                             );
