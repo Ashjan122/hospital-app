@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class AdminBookingsScreen extends StatefulWidget {
   final String centerId;
@@ -74,6 +77,18 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
         }
       }
       
+      // ترتيب الحجوزات حسب التاريخ (الأحدث أولاً)
+      allBookings.sort((a, b) {
+        final dateA = DateTime.tryParse(a['date'] ?? '');
+        final dateB = DateTime.tryParse(b['date'] ?? '');
+        
+        if (dateA == null && dateB == null) return 0;
+        if (dateA == null) return 1;
+        if (dateB == null) return -1;
+        
+        return dateB.compareTo(dateA); // الأحدث أولاً
+      });
+      
       return allBookings;
     } catch (e) {
       return [];
@@ -121,6 +136,18 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
         }).toList();
         break;
     }
+    
+    // إعادة ترتيب النتائج المصفاة حسب التاريخ (الأحدث أولاً)
+    filteredBookings.sort((a, b) {
+      final dateA = DateTime.tryParse(a['date'] ?? '');
+      final dateB = DateTime.tryParse(b['date'] ?? '');
+      
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+      
+      return dateB.compareTo(dateA); // الأحدث أولاً
+    });
     
     return filteredBookings;
   }
@@ -311,7 +338,7 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
                       final doctorName = booking['doctorName'] ?? 'طبيب غير معروف';
                       final specialization = booking['specialization'] ?? 'تخصص غير معروف';
                       final patientName = booking['patientName'] ?? 'مريض غير معروف';
-                      final patientPhone = booking['patiantPhone'] ?? 'غير محدد';
+                      // final patientPhone = booking['patiantPhone'] ?? 'غير محدد';
                       final date = booking['date'] ?? '';
                       final time = booking['time'] ?? '';
                       final period = booking['period'] ?? '';
@@ -370,7 +397,7 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
                                      Row(
                                        children: [
                                          Icon(
-                                           Icons.medical_services,
+                                           FontAwesomeIcons.userDoctor,
                                            size: 16,
                                            color: const Color.fromARGB(255, 78, 17, 175),
                                          ),
@@ -464,5 +491,64 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
       ),
     );
+  }
+
+  Future<void> sendNotificationToPatient(String patientId, String title, String body) async {
+    try {
+      // جلب FCM token للمريض
+      final patientDoc = await FirebaseFirestore.instance
+          .collection('patients')
+          .doc(patientId)
+          .get();
+      
+      if (patientDoc.exists) {
+        final patientData = patientDoc.data();
+        final fcmToken = patientData?['fcmToken'];
+        
+        if (fcmToken != null) {
+          // إرسال الإشعار عبر Firebase Cloud Functions أو مباشرة
+          await _sendFCMNotification(fcmToken, title, body);
+        }
+      }
+    } catch (e) {
+      print('خطأ في إرسال الإشعار: $e');
+    }
+  }
+
+  Future<void> _sendFCMNotification(String token, String title, String body) async {
+    // ملاحظة: في التطبيق الحقيقي، يجب إرسال الإشعارات عبر Firebase Cloud Functions
+    // أو استخدام Firebase Admin SDK في الخادم
+    // هذا مثال بسيط للتوضيح
+    
+    final url = Uri.parse('https://fcm.googleapis.com/fcm/send');
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'key=YOUR_SERVER_KEY', // يجب استبدالها بمفتاح الخادم الحقيقي
+    };
+    
+    final data = {
+      'to': token,
+      'notification': {
+        'title': title,
+        'body': body,
+        'sound': 'default',
+      },
+      'data': {
+        'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+        'title': title,
+        'body': body,
+      },
+    };
+    
+    try {
+      final response = await http.post(url, headers: headers, body: json.encode(data));
+      if (response.statusCode == 200) {
+        print('تم إرسال الإشعار بنجاح');
+      } else {
+        print('فشل في إرسال الإشعار: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('خطأ في إرسال الإشعار: $e');
+    }
   }
 }

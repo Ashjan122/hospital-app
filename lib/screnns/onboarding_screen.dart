@@ -1,11 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:introduction_screen/introduction_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hospital_app/screnns/login_screen.dart';
 
 class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({super.key});
 
-  void _onIntroEnd(context) {
-    Navigator.of(context).pushReplacementNamed('/home');
+  void _onIntroEnd(context) async {
+    // حفظ أن المستخدم قد شاهد الـ onboarding
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('hasSeenOnboarding', true);
+    
+    // الانتقال لشاشة تسجيل الدخول
+    if (context.mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+      );
+    }
+  }
+
+  void _onSkip(context) async {
+    // حفظ أن المستخدم قد شاهد الـ onboarding
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('hasSeenOnboarding', true);
+    
+    // الانتقال لشاشة تسجيل الدخول
+    if (context.mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+      );
+    }
   }
 
   @override
@@ -73,11 +97,12 @@ class OnboardingScreen extends StatelessWidget {
         ),
       ],
       onDone: () => _onIntroEnd(context),
+      onSkip: () => _onSkip(context),
       showSkipButton: true,
       skip: const Text("تخطي"),
       next: const Icon(Icons.arrow_forward),
       overrideDone: TextButton(
-        onPressed: () {},
+        onPressed: () => _onIntroEnd(context),
         style: TextButton.styleFrom(
           backgroundColor: Color.fromARGB(255, 44, 13, 156),
           shape: RoundedRectangleBorder(

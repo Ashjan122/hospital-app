@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
 import 'package:hospital_app/screnns/admin_doctors_screen.dart';
 import 'package:hospital_app/screnns/admin_specialties_screen.dart';
@@ -33,11 +34,18 @@ class DashboardScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (route) => false,
-              );
+            onPressed: () async {
+              // Clear saved login data
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+              
+              // Navigate to login screen
+              if (context.mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  (route) => false,
+                );
+              }
             },
           ),
         ],

@@ -398,8 +398,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                       final user = filteredUsers[index];
                       final userName = user['name'] ?? 'غير محدد';
                       final userPhone = user['phone'] ?? 'غير محدد';
-                      final isActive = user['isActive'] ?? true;
-                      final createdAt = user['createdAt'] as Timestamp?;
+                                             // final isActive = user['isActive'] ?? true;
+                       // final createdAt = user['createdAt'] as Timestamp?;
 
                                              return Container(
                          margin: const EdgeInsets.only(bottom: 12),
@@ -504,8 +504,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     );
   }
 
-  String _formatDate(Timestamp timestamp) {
-    final date = timestamp.toDate();
-    return '${date.day}/${date.month}/${date.year}';
-  }
+  // String _formatDate(Timestamp timestamp) {
+  //   final date = timestamp.toDate();
+  //   return '${date.day}/${date.month}/${date.year}';
+  // }
 }

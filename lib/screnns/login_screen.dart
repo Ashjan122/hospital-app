@@ -4,6 +4,7 @@ import 'package:hospital_app/screnns/hospital_screen.dart';
 import 'package:hospital_app/screnns/register_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,10 +21,86 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   @override
+  void initState() {
+    super.initState();
+    _checkLoginStatus();
+  }
+
+  @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkLoginStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    final userType = prefs.getString('userType');
+    final centerId = prefs.getString('centerId');
+    final centerName = prefs.getString('centerName');
+    final userEmail = prefs.getString('userEmail');
+
+    if (isLoggedIn) {
+      if (userType == 'admin' && centerId != null && centerName != null) {
+        // Admin is logged in
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => DashboardScreen(
+              centerId: centerId,
+              centerName: centerName,
+            ),
+          ),
+        );
+      } else if (userType == 'patient' && userEmail != null) {
+        // Patient is logged in
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => HospitalScreen(),
+          ),
+        );
+      } else if (userType == 'user' && centerId != null && centerName != null) {
+        // Internal user is logged in
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => DashboardScreen(
+              centerId: centerId,
+              centerName: centerName,
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveLoginData(String userType, {String? centerId, String? centerName, String? userEmail}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isLoggedIn', true);
+    await prefs.setString('userType', userType);
+    
+    if (centerId != null) await prefs.setString('centerId', centerId);
+    if (centerName != null) await prefs.setString('centerName', centerName);
+    if (userEmail != null) await prefs.setString('userEmail', userEmail);
+  }
+
+  Future<void> _saveFCMTokenForPatient(String patientId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final fcmToken = prefs.getString('fcm_token');
+      
+      if (fcmToken != null) {
+        await FirebaseFirestore.instance
+            .collection('patients')
+            .doc(patientId)
+            .update({
+          'fcmToken': fcmToken,
+          'lastTokenUpdate': FieldValue.serverTimestamp(),
+        });
+        print('تم حفظ FCM token للمريض: $patientId');
+      }
+    } catch (e) {
+      print('خطأ في حفظ FCM token: $e');
+    }
   }
 
   Future<void> _login() async {
@@ -63,6 +140,9 @@ class _LoginScreenState extends State<LoginScreen> {
           }
 
           if (isAdminLogin) {
+            // Save admin login data
+            await _saveLoginData('admin', centerId: centerId, centerName: centerName);
+            
             // Admin login - redirect to dashboard with center info
             if (mounted) {
               setState(() {
@@ -113,6 +193,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
               if (mounted) {
                 if (userDoc.exists) {
+                  // Save patient login data
+                  await _saveLoginData('patient', userEmail: _usernameController.text.trim());
+                  
+                  // Save FCM token for patient
+                  await _saveFCMTokenForPatient(userCredential.user!.uid);
+                  
                   // Patient login - redirect to hospital screen
                   Navigator.of(context).pushReplacement(
                     MaterialPageRoute(builder: (context) => const HospitalScreen()),
@@ -162,6 +248,9 @@ class _LoginScreenState extends State<LoginScreen> {
             }
 
             if (userFound) {
+              // Save user login data
+              await _saveLoginData('user', centerId: centerId, centerName: centerName);
+              
               // User login - redirect to dashboard
               if (mounted) {
                 setState(() {

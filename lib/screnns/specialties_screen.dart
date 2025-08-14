@@ -2,20 +2,47 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/doctors_screen.dart';
 
-class SpecialtiesScreen extends StatelessWidget {
+class SpecialtiesScreen extends StatefulWidget {
   final String facilityId;
   const SpecialtiesScreen({super.key, required this.facilityId});
+
+  @override
+  State<SpecialtiesScreen> createState() => _SpecialtiesScreenState();
+}
+
+class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  List<QueryDocumentSnapshot> _allSpecialties = [];
+  bool _isSearching = false;
 
   Future<List<QueryDocumentSnapshot>> fetchSpecialties() async {
     final snapshot = await FirebaseFirestore.instance
         .collection('medicalFacilities')
-        .doc(facilityId)
+        .doc(widget.facilityId)
         .collection('specializations')
         .where('isActive', isEqualTo: true)
         .get();
 
+    _allSpecialties = snapshot.docs;
     return snapshot.docs;
   }
+
+  List<QueryDocumentSnapshot> getFilteredSpecialties() {
+    if (_searchQuery.isEmpty) {
+      return _allSpecialties;
+    }
+    
+    return _allSpecialties.where((specialty) {
+      final data = specialty.data() as Map<String, dynamic>;
+      final specName = data['specName']?.toString().toLowerCase() ?? '';
+      final searchLower = _searchQuery.toLowerCase();
+      
+      return specName.contains(searchLower);
+    }).toList();
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -24,19 +51,56 @@ class SpecialtiesScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           actions: [
-            IconButton(
-              onPressed: () {},
-              icon: Icon(Icons.search, color: Color.fromARGB(255, 78, 17, 175)),
-            ),
+            _isSearching
+                ? IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _isSearching = false;
+                        _searchQuery = '';
+                        _searchController.clear();
+                      });
+                    },
+                    icon: Icon(Icons.close, color: Color.fromARGB(255, 78, 17, 175)),
+                  )
+                : IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _isSearching = true;
+                      });
+                    },
+                    icon: Icon(Icons.search, color: Color.fromARGB(255, 78, 17, 175)),
+                  ),
           ],
-          title: Text(
-            "التخصصات الطبية",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 78, 17, 175),
-              fontSize: 30,
-            ),
-          ),
+                      title: _isSearching
+                ? TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                    },
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'البحث عن تخصص طبي...',
+                      border: InputBorder.none,
+                      hintStyle: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 16,
+                      ),
+                    ),
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 16,
+                    ),
+                  )
+                : Text(
+                    "التخصصات الطبية",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: const Color.fromARGB(255, 78, 17, 175),
+                      fontSize: 30,
+                    ),
+                  ),
         ),
 
         body: FutureBuilder<List<QueryDocumentSnapshot>>(
@@ -46,9 +110,31 @@ class SpecialtiesScreen extends StatelessWidget {
               return Center(child: CircularProgressIndicator());
             }
 
-            final specialties = snapshot.data ?? [];
+            final specialties = _searchQuery.isEmpty ? snapshot.data ?? [] : getFilteredSpecialties();
             if (specialties.isEmpty) {
-              return Center(child: Text("لا توجد تخصصات حاليا"));
+              return Center(
+                child: _searchQuery.isNotEmpty
+                    ? Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.search_off,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'لا يوجد تخصصات تطابق البحث',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text("لا توجد تخصصات حاليا"),
+              );
             }
 
             return ListView.builder(
@@ -65,14 +151,14 @@ class SpecialtiesScreen extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (context) => DoctorsScreen(
-                          facilityId: facilityId,
+                          facilityId: widget.facilityId,
                           specId: specId,
                           
                         ),
                       ),
                     );
                   },
-                  child: Container(
+                  child: SizedBox(
                     width: 300,
                     height: 100,
                     child: Card(
@@ -107,5 +193,11 @@ class SpecialtiesScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 }

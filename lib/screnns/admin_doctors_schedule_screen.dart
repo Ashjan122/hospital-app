@@ -407,13 +407,28 @@ class _AdminDoctorsScheduleScreenState extends State<AdminDoctorsScheduleScreen>
     final workingSchedule = doctor['workingSchedule'] as Map<String, dynamic>? ?? {};
     final daySchedule = workingSchedule[day] ?? {};
     
-    final morningStartController = TextEditingController(text: daySchedule['morning']?['start'] ?? '');
-    final morningEndController = TextEditingController(text: daySchedule['morning']?['end'] ?? '');
-    final eveningStartController = TextEditingController(text: daySchedule['evening']?['start'] ?? '');
-    final eveningEndController = TextEditingController(text: daySchedule['evening']?['end'] ?? '');
+    // تحديد الأوقات الافتراضية
+    final morningStartController = TextEditingController(
+      text: daySchedule['morning']?['start'] ?? '09:00'
+    );
+    final morningEndController = TextEditingController(
+      text: daySchedule['morning']?['end'] ?? '12:00'
+    );
+    final eveningStartController = TextEditingController(
+      text: daySchedule['evening']?['start'] ?? '18:00'
+    );
+    final eveningEndController = TextEditingController(
+      text: daySchedule['evening']?['end'] ?? '23:00'
+    );
     
+    // تفعيل الفترات تلقائياً إذا لم تكن موجودة
     bool hasMorning = daySchedule['morning'] != null;
     bool hasEvening = daySchedule['evening'] != null;
+    
+    // إذا لم تكن هناك فترات محددة، تفعيل الفترة الصباحية تلقائياً
+    if (!hasMorning && !hasEvening) {
+      hasMorning = true;
+    }
 
     showDialog(
       context: context,
@@ -435,6 +450,14 @@ class _AdminDoctorsScheduleScreenState extends State<AdminDoctorsScheduleScreen>
                           if (!hasMorning) {
                             morningStartController.clear();
                             morningEndController.clear();
+                          } else {
+                            // إعادة تعيين الأوقات الافتراضية إذا كانت فارغة
+                            if (morningStartController.text.isEmpty) {
+                              morningStartController.text = '09:00';
+                            }
+                            if (morningEndController.text.isEmpty) {
+                              morningEndController.text = '12:00';
+                            }
                           }
                         });
                       },
@@ -450,7 +473,7 @@ class _AdminDoctorsScheduleScreenState extends State<AdminDoctorsScheduleScreen>
                           controller: morningStartController,
                           decoration: const InputDecoration(
                             labelText: 'وقت البداية',
-                            hintText: '09:00',
+                            hintText: 'مثال: 09:00',
                           ),
                         ),
                       ),
@@ -460,7 +483,7 @@ class _AdminDoctorsScheduleScreenState extends State<AdminDoctorsScheduleScreen>
                           controller: morningEndController,
                           decoration: const InputDecoration(
                             labelText: 'وقت النهاية',
-                            hintText: '12:00',
+                            hintText: 'مثال: 12:00',
                           ),
                         ),
                       ),
@@ -480,6 +503,14 @@ class _AdminDoctorsScheduleScreenState extends State<AdminDoctorsScheduleScreen>
                           if (!hasEvening) {
                             eveningStartController.clear();
                             eveningEndController.clear();
+                          } else {
+                            // إعادة تعيين الأوقات الافتراضية إذا كانت فارغة
+                            if (eveningStartController.text.isEmpty) {
+                              eveningStartController.text = '18:00';
+                            }
+                            if (eveningEndController.text.isEmpty) {
+                              eveningEndController.text = '23:00';
+                            }
                           }
                         });
                       },
@@ -495,7 +526,7 @@ class _AdminDoctorsScheduleScreenState extends State<AdminDoctorsScheduleScreen>
                           controller: eveningStartController,
                           decoration: const InputDecoration(
                             labelText: 'وقت البداية',
-                            hintText: '16:00',
+                            hintText: 'مثال: 18:00',
                           ),
                         ),
                       ),
@@ -505,7 +536,7 @@ class _AdminDoctorsScheduleScreenState extends State<AdminDoctorsScheduleScreen>
                           controller: eveningEndController,
                           decoration: const InputDecoration(
                             labelText: 'وقت النهاية',
-                            hintText: '20:00',
+                            hintText: 'مثال: 23:00',
                           ),
                         ),
                       ),
