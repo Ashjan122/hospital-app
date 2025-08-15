@@ -20,6 +20,8 @@ class AdminDoctorDetailsScreen extends StatefulWidget {
 class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _morningLimitController = TextEditingController();
+  final TextEditingController _eveningLimitController = TextEditingController();
   bool _isEditing = false;
   bool _isLoading = false;
 
@@ -94,6 +96,8 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
               .update({
             'docName': _nameController.text.trim(),
             'phoneNumber': _phoneController.text.trim(),
+            'morningPatientLimit': int.tryParse(_morningLimitController.text) ?? 20,
+            'eveningPatientLimit': int.tryParse(_eveningLimitController.text) ?? 20,
           });
 
           ScaffoldMessenger.of(context).showSnackBar(
@@ -354,6 +358,8 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
             if (!_isEditing) {
               _nameController.text = doctorName;
               _phoneController.text = phoneNumber;
+              _morningLimitController.text = (doctorData['morningPatientLimit'] ?? 20).toString();
+              _eveningLimitController.text = (doctorData['eveningPatientLimit'] ?? 20).toString();
             }
 
             return SingleChildScrollView(
@@ -468,6 +474,39 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
                         _buildEditableInfoRow(Icons.phone, 'رقم الهاتف', _phoneController)
                       else
                         _buildInfoRow(Icons.phone, 'رقم الهاتف', phoneNumber),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Patient limits
+                  _buildInfoSection(
+                    'إعدادات عدد المرضى',
+                    [
+                      if (_isEditing) ...[
+                        _buildEditableInfoRow(
+                          Icons.wb_sunny, 
+                          'الحد الأقصى للمرضى - الفترة الصباحية', 
+                          _morningLimitController,
+                          keyboard: TextInputType.number,
+                        ),
+                        _buildEditableInfoRow(
+                          Icons.nightlight, 
+                          'الحد الأقصى للمرضى - الفترة المسائية', 
+                          _eveningLimitController,
+                          keyboard: TextInputType.number,
+                        ),
+                      ] else ...[
+                        _buildInfoRow(
+                          Icons.wb_sunny, 
+                          'الحد الأقصى للمرضى - الفترة الصباحية', 
+                          '${doctorData['morningPatientLimit'] ?? 20} مريض',
+                        ),
+                        _buildInfoRow(
+                          Icons.nightlight, 
+                          'الحد الأقصى للمرضى - الفترة المسائية', 
+                          '${doctorData['eveningPatientLimit'] ?? 20} مريض',
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -616,7 +655,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
     );
   }
 
-  Widget _buildEditableInfoRow(IconData icon, String label, TextEditingController controller) {
+  Widget _buildEditableInfoRow(IconData icon, String label, TextEditingController controller, {TextInputType? keyboard}) {
     return Padding(
       padding: EdgeInsets.only(bottom: 16),
       child: Row(
@@ -650,6 +689,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
                 const SizedBox(height: 4),
                 TextField(
                   controller: controller,
+                  keyboardType: keyboard ?? TextInputType.text,
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.black87,

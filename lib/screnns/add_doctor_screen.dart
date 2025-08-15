@@ -19,6 +19,8 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _morningLimitController = TextEditingController(text: '20');
+  final _eveningLimitController = TextEditingController(text: '20');
   String? _selectedSpecialization;
   String _selectedPhotoUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
   bool _isLoading = false;
@@ -80,6 +82,8 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         'docName': _nameController.text.trim(),
         'phoneNumber': _phoneController.text.trim(),
         'photoUrl': _selectedPhotoUrl,
+        'morningPatientLimit': int.tryParse(_morningLimitController.text) ?? 20,
+        'eveningPatientLimit': int.tryParse(_eveningLimitController.text) ?? 20,
         'isActive': true,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -393,6 +397,56 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
                             return null;
                           },
                         ),
+                        const SizedBox(height: 16),
+
+                        // Morning patient limit
+                        TextFormField(
+                          controller: _morningLimitController,
+                          decoration: InputDecoration(
+                            labelText: 'الحد الأقصى للمرضى - الفترة الصباحية',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            prefixIcon: Icon(Icons.wb_sunny),
+                            suffixText: 'مريض',
+                          ),
+                          keyboardType: TextInputType.number,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'يرجى إدخال عدد المرضى';
+                            }
+                            final number = int.tryParse(value);
+                            if (number == null || number <= 0) {
+                              return 'يرجى إدخال رقم صحيح أكبر من صفر';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Evening patient limit
+                        TextFormField(
+                          controller: _eveningLimitController,
+                          decoration: InputDecoration(
+                            labelText: 'الحد الأقصى للمرضى - الفترة المسائية',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            prefixIcon: Icon(Icons.nightlight),
+                            suffixText: 'مريض',
+                          ),
+                          keyboardType: TextInputType.number,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'يرجى إدخال عدد المرضى';
+                            }
+                            final number = int.tryParse(value);
+                            if (number == null || number <= 0) {
+                              return 'يرجى إدخال رقم صحيح أكبر من صفر';
+                            }
+                            return null;
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -449,6 +503,8 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _morningLimitController.dispose();
+    _eveningLimitController.dispose();
     super.dispose();
   }
 }

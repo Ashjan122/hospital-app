@@ -56,6 +56,40 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     final shiftData = schedule[shiftKey];
     if (shiftData == null) return null;
 
+    // فحص عدد المرضى المحجوزين في هذا اليوم والفترة
+    final dateStr = intl.DateFormat('yyyy-MM-dd').format(date);
+    final shiftBookings = await FirebaseFirestore.instance
+        .collection('medicalFacilities')
+        .doc(widget.facilityId)
+        .collection('specializations')
+        .doc(widget.specializationId)
+        .collection('doctors')
+        .doc(widget.doctorId)
+        .collection('appointments')
+        .where('date', isEqualTo: dateStr)
+        .where('period', isEqualTo: shiftKey)
+        .get();
+
+    // الحصول على حد المرضى للطبيب
+    final doctorDoc = await FirebaseFirestore.instance
+        .collection('medicalFacilities')
+        .doc(widget.facilityId)
+        .collection('specializations')
+        .doc(widget.specializationId)
+        .collection('doctors')
+        .doc(widget.doctorId)
+        .get();
+
+    final doctorData = doctorDoc.data();
+    final patientLimit = shiftKey == 'morning' 
+        ? (doctorData?['morningPatientLimit'] ?? 20)
+        : (doctorData?['eveningPatientLimit'] ?? 20);
+
+    // فحص إذا كان العدد قد اكتمل
+    if (shiftBookings.docs.length >= patientLimit) {
+      return null; // لا توجد مواعيد متاحة
+    }
+
     int startHour = int.parse(shiftData['start'].split(":")[0]);
     int endHour = int.parse(shiftData['end'].split(":")[0]);
 
@@ -92,7 +126,45 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     final result = await getAvailableTime(widget.selectedDate);
     if (result == null) {
       setState(() => isLoading = false);
-      _showDialog("لا يوجد موعد", "لا توجد مواعيد متاحة في هذا اليوم");
+      
+      // فحص إذا كان السبب هو اكتمال العدد
+      final dateStr = intl.DateFormat('yyyy-MM-dd').format(widget.selectedDate);
+      final shiftKey = widget.selectedShift ?? 'morning';
+      final shiftBookings = await FirebaseFirestore.instance
+          .collection('medicalFacilities')
+          .doc(widget.facilityId)
+          .collection('specializations')
+          .doc(widget.specializationId)
+          .collection('doctors')
+          .doc(widget.doctorId)
+          .collection('appointments')
+          .where('date', isEqualTo: dateStr)
+          .where('period', isEqualTo: shiftKey)
+          .get();
+
+      final doctorDoc = await FirebaseFirestore.instance
+          .collection('medicalFacilities')
+          .doc(widget.facilityId)
+          .collection('specializations')
+          .doc(widget.specializationId)
+          .collection('doctors')
+          .doc(widget.doctorId)
+          .get();
+
+      final doctorData = doctorDoc.data();
+      final patientLimit = shiftKey == 'morning' 
+          ? (doctorData?['morningPatientLimit'] ?? 20)
+          : (doctorData?['eveningPatientLimit'] ?? 20);
+
+      if (shiftBookings.docs.length >= patientLimit) {
+        final periodText = shiftKey == 'morning' ? 'الصباحية' : 'المسائية';
+        _showDialog(
+          "اكتمل العدد", 
+          "عذراً، اكتمل العدد المحدد للمرضى في الفترة $periodText لهذا اليوم (${patientLimit} مريض).\nيرجى اختيار يوم آخر أو فترة أخرى."
+        );
+      } else {
+        _showDialog("لا يوجد موعد", "لا توجد مواعيد متاحة في هذا اليوم");
+      }
       return;
     }
 
