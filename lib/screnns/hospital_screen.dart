@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:hospital_app/screnns/specialties_screen.dart';
+import 'package:hospital_app/screnns/facility_details_screen.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:hospital_app/widgets/optimized_loading_widget.dart';
 
 class HospitalScreen extends StatefulWidget {
   const HospitalScreen({super.key});
@@ -46,13 +47,19 @@ class _HospitalScreenState extends State<HospitalScreen> {
   }
 
   Future<List<QueryDocumentSnapshot>> fetchFacilities() async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('medicalFacilities')
-        .orderBy('available', descending: true)
-        .get();
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('medicalFacilities')
+          .orderBy('available', descending: true)
+          .get()
+          .timeout(const Duration(seconds: 8));
 
-    _allFacilities = snapshot.docs;
-    return snapshot.docs;
+      _allFacilities = snapshot.docs;
+      return snapshot.docs;
+    } catch (e) {
+      print('خطأ في تحميل المرافق الطبية: $e');
+      return [];
+    }
   }
 
   List<QueryDocumentSnapshot> getFilteredFacilities() {
@@ -73,27 +80,38 @@ class _HospitalScreenState extends State<HospitalScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        leading: _isSearching
-            ? IconButton(
-                onPressed: () {
-                  setState(() {
-                    _isSearching = false;
-                    _searchQuery = '';
-                    _searchController.clear();
-                  });
-                },
-                icon: Icon(Icons.close, color: Color.fromARGB(255, 78, 17, 175)),
-              )
-            : IconButton(
-                onPressed: () {
-                  setState(() {
-                    _isSearching = true;
-                  });
-                },
-                icon: Icon(Icons.search, color: Color.fromARGB(255, 78, 17, 175)),
-              ),
+             appBar: AppBar(
+         centerTitle: true,
+         backgroundColor: Colors.white,
+         elevation: 0,
+         leading: _isSearching
+             ? IconButton(
+                 onPressed: () {
+                   setState(() {
+                     _isSearching = false;
+                     _searchQuery = '';
+                     _searchController.clear();
+                   });
+                 },
+                 icon: Icon(Icons.close, color: Color.fromARGB(255, 78, 17, 175)),
+               )
+             : IconButton(
+                 onPressed: () {
+                   setState(() {
+                     _isSearching = true;
+                   });
+                 },
+                 icon: Icon(Icons.search, color: Color.fromARGB(255, 78, 17, 175)),
+               ),
+         actions: [
+           if (!_isSearching)
+             IconButton(
+               onPressed: () {
+                 Navigator.pop(context);
+               },
+               icon: Icon(Icons.arrow_back, color: Color.fromARGB(255, 78, 17, 175)),
+             ),
+         ],
         title: _isSearching
             ? TextField(
                 controller: _searchController,
@@ -124,33 +142,39 @@ class _HospitalScreenState extends State<HospitalScreen> {
                   fontSize: 30,
                 ),
               ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Color.fromARGB(255, 78, 17, 175)),
-            onPressed: () async {
-              // Clear saved login data
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.clear();
 
-              // Navigate to login screen
-              if (context.mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  (route) => false,
-                );
-              }
-            },
-          ),
-        ],
       ),
       body: FutureBuilder<List<QueryDocumentSnapshot>>(
         future: fetchFacilities(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
+            return const OptimizedLoadingWidget(
+              message: 'جاري تحميل المرافق الطبية...',
+              color: Color.fromARGB(255, 78, 17, 175),
+            );
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return Center(child: Text("لا توجد بيانات"));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.medical_services_outlined,
+                    size: 64,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'لا توجد مرافق طبية حالياً',
+                    style: TextStyle(
+                      fontSize: 18,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            );
           }
 
           final facilities = _searchQuery.isEmpty ? snapshot.data! : getFilteredFacilities();
@@ -192,8 +216,9 @@ class _HospitalScreenState extends State<HospitalScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => SpecialtiesScreen(
+                          builder: (context) => FacilityDetailsScreen(
                             facilityId: doc.id,
+                            facilityName: name,
                           ),
                         ),
                       );
@@ -215,6 +240,7 @@ class _HospitalScreenState extends State<HospitalScreen> {
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
                           Icons.medication,
@@ -231,8 +257,10 @@ class _HospitalScreenState extends State<HospitalScreen> {
                             fontWeight: FontWeight.bold,
                             color: isAvailable ? Colors.black : Colors.grey,
                           ),
+                          textAlign: TextAlign.center,
                         ),
-                        if (!isAvailable)
+                        if (!isAvailable) ...[
+                          SizedBox(height: 5),
                           Text(
                             'قريبا',
                             style: TextStyle(
@@ -240,7 +268,9 @@ class _HospitalScreenState extends State<HospitalScreen> {
                               fontSize: 20,
                               fontWeight: FontWeight.w500,
                             ),
+                            textAlign: TextAlign.center,
                           ),
+                        ],
                       ],
                     ),
                   ),

@@ -6,6 +6,8 @@ import 'package:hospital_app/screnns/admin_specialties_screen.dart';
 import 'package:hospital_app/screnns/admin_doctors_schedule_screen.dart';
 import 'package:hospital_app/screnns/admin_bookings_screen.dart';
 import 'package:hospital_app/screnns/admin_users_screen.dart';
+import 'package:hospital_app/screnns/admin_insurance_companies_screen.dart';
+import 'package:hospital_app/screnns/about_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   final String? centerId;
@@ -32,6 +34,14 @@ class DashboardScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const AboutScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -68,8 +78,9 @@ class DashboardScreen extends StatelessWidget {
                     border: Border.all(color: Colors.grey[300]!),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
+                      
                       Text(
                         centerName != null ? 'مرحباً بك في $centerName' : 'مرحباً بك، المدير!',
                         style: const TextStyle(
@@ -135,6 +146,32 @@ class DashboardScreen extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (context) => AdminSpecialtiesScreen(
+                                  centerId: centerId!,
+                                  centerName: centerName,
+                                ),
+                              ),
+                            );
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('يرجى تسجيل الدخول أولاً'),
+                                backgroundColor: Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                      _buildDashboardCard(
+                        context,
+                        'شركات التأمين',
+                        Icons.security,
+                        const Color.fromARGB(255, 78, 17, 175),
+                        () {
+                          if (centerId != null) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => AdminInsuranceCompaniesScreen(
                                   centerId: centerId!,
                                   centerName: centerName,
                                 ),

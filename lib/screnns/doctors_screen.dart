@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/booking_screen.dart';
+import 'package:hospital_app/widgets/optimized_loading_widget.dart';
 
 class DoctorsScreen extends StatefulWidget {
   final String facilityId;
@@ -21,19 +22,37 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   String _searchQuery = '';
   List<QueryDocumentSnapshot> _allDoctors = [];
   bool _isSearching = false;
+  Stream<QuerySnapshot>? _doctorsStream;
 
-  Future<List<QueryDocumentSnapshot>> fetchDoctors() async {
-    final snapshot =
-        await FirebaseFirestore.instance
-            .collection('medicalFacilities')
-            .doc(widget.facilityId)
-            .collection('specializations')
-            .doc(widget.specId)
-            .collection('doctors')
-            .get();
+  Future<List<QueryDocumentSnapshot>> fetchDoctorsOnce() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('medicalFacilities')
+          .doc(widget.facilityId)
+          .collection('specializations')
+          .doc(widget.specId)
+          .collection('doctors')
+          .get()
+          .timeout(const Duration(seconds: 8));
+      _allDoctors = snapshot.docs;
+      return snapshot.docs;
+    } catch (e) {
+      print('خطأ في تحميل الأطباء: $e');
+      return [];
+    }
+  }
 
-    _allDoctors = snapshot.docs;
-    return snapshot.docs;
+  @override
+  void initState() {
+    super.initState();
+    _doctorsStream = FirebaseFirestore.instance
+        .collection('medicalFacilities')
+        .doc(widget.facilityId)
+        .collection('specializations')
+        .doc(widget.specId)
+        .collection('doctors')
+        .orderBy('createdAt', descending: true)
+        .snapshots();
   }
 
   List<QueryDocumentSnapshot> getFilteredDoctors() {
@@ -110,23 +129,42 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                   ),
                 ),
         ),
-        body: FutureBuilder<List<QueryDocumentSnapshot>>(
-          future: fetchDoctors(),
+        body: StreamBuilder<QuerySnapshot>(
+          stream: _doctorsStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
+              return const OptimizedLoadingWidget(
+                message: 'جاري تحميل الأطباء...',
+                color: Color.fromARGB(255, 78, 17, 175),
+              );
             }
 
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return Center(
-                child: Text(
-                  'لا يوجد أطباء حالياً',
-                  style: TextStyle(fontSize: 18),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.medical_services_outlined,
+                      size: 64,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'لا يوجد أطباء حالياً',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               );
             }
 
-            final doctors = _searchQuery.isEmpty ? snapshot.data! : getFilteredDoctors();
+            _allDoctors = snapshot.data!.docs;
+            final doctors = _searchQuery.isEmpty ? _allDoctors : getFilteredDoctors();
             
             if (_searchQuery.isNotEmpty && doctors.isEmpty) {
               return Center(
@@ -158,11 +196,14 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                 final doc = doctors[index];
                 final doctorData = doc.data() as Map<String, dynamic>;
                 final doctorName = doctorData['docName'] ?? 'طبيب غير معروف';
-                final photoUrl =
-                    doctorData['photoUrl'] ??
-                    'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
+                final dynamic rawPhoto = doctorData['photoUrl'];
+                final String photoUrl = (rawPhoto is String) ? rawPhoto.trim() : '';
+                final bool hasValidPhoto = photoUrl.startsWith('http');
+                const String fallbackUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
+                final String effectiveUrl = hasValidPhoto ? photoUrl : fallbackUrl;
 
                 return GestureDetector(
+                  key: ValueKey(doc.id),
                   onTap: () {
                     Navigator.push(
                       context,
@@ -193,10 +234,18 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                           ClipRRect(
                             borderRadius: BorderRadius.circular(50),
                             child: Image.network(
-                              photoUrl,
+                              effectiveUrl,
                               width: 60,
                               height: 60,
                               fit: BoxFit.cover,
+                              errorBuilder: (context, error, stack) {
+                                return Container(
+                                  width: 60,
+                                  height: 60,
+                                  color: Colors.grey[300],
+                                  child: const Icon(Icons.person, color: Colors.grey),
+                                );
+                              },
                             ),
                           ),
                           SizedBox(width: 16),

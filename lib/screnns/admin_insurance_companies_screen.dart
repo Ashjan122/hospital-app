@@ -1,29 +1,28 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:hospital_app/widgets/optimized_loading_widget.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hospital_app/services/central_data_service.dart';
 
-class AdminSpecialtiesScreen extends StatefulWidget {
+class AdminInsuranceCompaniesScreen extends StatefulWidget {
   final String centerId;
   final String? centerName;
 
-  const AdminSpecialtiesScreen({
+  const AdminInsuranceCompaniesScreen({
     super.key,
     required this.centerId,
     this.centerName,
   });
 
   @override
-  State<AdminSpecialtiesScreen> createState() => _AdminSpecialtiesScreenState();
+  State<AdminInsuranceCompaniesScreen> createState() => _AdminInsuranceCompaniesScreenState();
 }
 
-class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
-  final TextEditingController _searchController = TextEditingController();
+class _AdminInsuranceCompaniesScreenState extends State<AdminInsuranceCompaniesScreen> {
+  final _formKey = GlobalKey<FormState>();
   String _searchQuery = '';
   bool _isLoading = false;
-  List<Map<String, dynamic>> _allSpecialties = [];
-  List<Map<String, dynamic>> _availableSpecialties = [];
-  List<Map<String, dynamic>> _centerSpecialties = [];
+  List<Map<String, dynamic>> _allInsuranceCompanies = [];
+  List<Map<String, dynamic>> _availableInsuranceCompanies = [];
+  List<Map<String, dynamic>> _centerInsuranceCompanies = [];
   bool _isLoadingData = true;
 
   @override
@@ -32,42 +31,38 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
     _loadData();
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
   Future<void> _loadData() async {
     setState(() {
       _isLoadingData = true;
     });
 
     try {
-      // جلب جميع التخصصات من قاعدة البيانات المركزية
-      final allSpecialties = await CentralDataService.getAllSpecialties();
+      // جلب جميع شركات التأمين من قاعدة البيانات المركزية
+      final allInsuranceCompanies = await CentralDataService.getAllInsuranceCompanies();
       
-      // جلب التخصصات الموجودة في المركز
-      final centerSpecialtiesSnapshot = await FirebaseFirestore.instance
-          .collection('medicalFacilities')
-          .doc(widget.centerId)
-          .collection('specializations')
+      // جلب شركات التأمين الموجودة في المركز
+      final centerInsuranceSnapshot = await FirebaseFirestore.instance
+            .collection('medicalFacilities')
+            .doc(widget.centerId)
+            .collection('insuranceCompanies')
           .get()
           .timeout(const Duration(seconds: 8));
 
-      final centerSpecialties = centerSpecialtiesSnapshot.docs.map((doc) {
+      final centerInsuranceCompanies = centerInsuranceSnapshot.docs.map((doc) {
         final data = doc.data();
         return {
           'id': doc.id,
-          'name': data['specName'] ?? doc.id,
+          'name': data['name'] ?? doc.id,
+          'description': data['description'] ?? '',
+          'phone': data['phone'] ?? '',
           'isActive': data['isActive'] ?? true,
         };
       }).toList();
 
       setState(() {
-        _allSpecialties = allSpecialties;
-        _centerSpecialties = centerSpecialties;
-        _updateAvailableSpecialties();
+        _allInsuranceCompanies = allInsuranceCompanies;
+        _centerInsuranceCompanies = centerInsuranceCompanies;
+        _updateAvailableInsuranceCompanies();
         _isLoadingData = false;
       });
     } catch (e) {
@@ -78,35 +73,35 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
     }
   }
 
-  void _updateAvailableSpecialties() {
-    // التخصصات المتاحة للإضافة (غير موجودة في المركز)
-    final centerSpecialtyIds = _centerSpecialties.map((spec) => spec['id']).toSet();
-    _availableSpecialties = _allSpecialties
-        .where((specialty) => !centerSpecialtyIds.contains(specialty['id']))
+  void _updateAvailableInsuranceCompanies() {
+    // شركات التأمين المتاحة للإضافة (غير موجودة في المركز)
+    final centerInsuranceIds = _centerInsuranceCompanies.map((insurance) => insurance['id']).toSet();
+    _availableInsuranceCompanies = _allInsuranceCompanies
+        .where((insurance) => !centerInsuranceIds.contains(insurance['id']))
         .toList();
   }
 
-  Future<void> addSpecialty(String specialtyId) async {
+  Future<void> addInsuranceCompany(String insuranceId) async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      await CentralDataService.addSpecialtyToCenter(widget.centerId, specialtyId);
+      await CentralDataService.addInsuranceCompanyToCenter(widget.centerId, insuranceId);
       
       // إعادة تحميل البيانات
       await _loadData();
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم إضافة التخصص بنجاح'),
-          backgroundColor: Colors.green,
-        ),
-      );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تم إضافة شركة التأمين بنجاح'),
+              backgroundColor: Colors.green,
+            ),
+          );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('حدث خطأ في إضافة التخصص: $e'),
+          content: Text('حدث خطأ في إضافة شركة التأمين: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -117,7 +112,7 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
     }
   }
 
-  Future<void> toggleSpecialtyStatus(String specialtyId, bool currentStatus) async {
+  Future<void> toggleInsuranceStatus(String insuranceId, bool currentStatus) async {
     setState(() {
       _isLoading = true;
     });
@@ -126,33 +121,33 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
       await FirebaseFirestore.instance
           .collection('medicalFacilities')
           .doc(widget.centerId)
-          .collection('specializations')
-          .doc(specialtyId)
+          .collection('insuranceCompanies')
+          .doc(insuranceId)
           .update({
         'isActive': !currentStatus,
       });
 
       // تحديث القائمة المحلية
       setState(() {
-        final index = _centerSpecialties.indexWhere((spec) => spec['id'] == specialtyId);
+        final index = _centerInsuranceCompanies.indexWhere((insurance) => insurance['id'] == insuranceId);
         if (index != -1) {
-          _centerSpecialties[index]['isActive'] = !currentStatus;
+          _centerInsuranceCompanies[index]['isActive'] = !currentStatus;
         }
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(!currentStatus ? 'تم تفعيل التخصص' : 'تم تعطيل التخصص'),
+          content: Text(!currentStatus ? 'تم تفعيل شركة التأمين' : 'تم تعطيل شركة التأمين'),
           backgroundColor: Colors.green,
         ),
       );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('حدث خطأ في تحديث حالة التخصص'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+          content: Text('حدث خطأ في تحديث حالة شركة التأمين'),
+              backgroundColor: Colors.red,
+            ),
+          );
     } finally {
       setState(() {
         _isLoading = false;
@@ -160,7 +155,7 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
     }
   }
 
-  Future<void> deleteSpecialty(String specialtyId) async {
+  Future<void> deleteInsuranceCompany(String insuranceId) async {
     setState(() {
       _isLoading = true;
     });
@@ -169,8 +164,8 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
       await FirebaseFirestore.instance
           .collection('medicalFacilities')
           .doc(widget.centerId)
-          .collection('specializations')
-          .doc(specialtyId)
+          .collection('insuranceCompanies')
+          .doc(insuranceId)
           .delete();
 
       // إعادة تحميل البيانات
@@ -178,14 +173,14 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('تم حذف التخصص بنجاح'),
+          content: Text('تم حذف شركة التأمين بنجاح'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('حدث خطأ في حذف التخصص: $e'),
+          content: Text('حدث خطأ في حذف شركة التأمين: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -196,11 +191,11 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
     }
   }
 
-  void _showAddSpecialtyDialog() {
-    if (_availableSpecialties.isEmpty) {
+  void _showAddDialog() {
+    if (_availableInsuranceCompanies.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('لا توجد تخصصات متاحة للإضافة'),
+          content: Text('لا توجد شركات تأمين متاحة للإضافة'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -212,7 +207,7 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('إضافة تخصص جديد'),
+          title: const Text('إضافة شركة تأمين جديدة'),
           content: SizedBox(
             width: double.maxFinite,
             child: Column(
@@ -220,7 +215,7 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
               children: [
                 TextField(
                   decoration: const InputDecoration(
-                    labelText: 'بحث عن تخصص...',
+                    labelText: 'بحث عن شركة...',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.search),
                   ),
@@ -231,13 +226,13 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
                   constraints: const BoxConstraints(maxHeight: 300),
                   child: ListView(
                     shrinkWrap: true,
-                    children: _availableSpecialties
-                        .where((s) => localQuery.isEmpty || (s['name'] as String).toLowerCase().contains(localQuery.toLowerCase()))
-                        .map((s) => ListTile(
-                              title: Text(s['name']),
+                    children: _availableInsuranceCompanies
+                        .where((c) => localQuery.isEmpty || (c['name'] as String).toLowerCase().contains(localQuery.toLowerCase()))
+                        .map((c) => ListTile(
+                              title: Text(c['name']),
                               onTap: () {
                                 Navigator.of(context).pop();
-                                addSpecialty(s['id']);
+                                addInsuranceCompany(c['id']);
                               },
                             ))
                         .toList(),
@@ -257,12 +252,14 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
     );
   }
 
-  List<Map<String, dynamic>> filterSpecialties(List<Map<String, dynamic>> specialties) {
-    if (_searchQuery.isEmpty) return specialties;
+  List<Map<String, dynamic>> filterInsuranceCompanies(List<Map<String, dynamic>> insuranceCompanies) {
+    if (_searchQuery.isEmpty) return insuranceCompanies;
     
-    return specialties.where((specialty) {
-      final name = specialty['name']?.toString().toLowerCase() ?? '';
-      return name.contains(_searchQuery.toLowerCase());
+    return insuranceCompanies.where((insurance) {
+      final name = insurance['name']?.toString().toLowerCase() ?? '';
+      final description = insurance['description']?.toString().toLowerCase() ?? '';
+      return name.contains(_searchQuery.toLowerCase()) ||
+             description.contains(_searchQuery.toLowerCase());
     }).toList();
   }
 
@@ -270,18 +267,18 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
   Widget build(BuildContext context) {
     if (_isLoadingData) {
       return const Scaffold(
-        body: Center(child: OptimizedLoadingWidget()),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    final filteredCenterSpecialties = filterSpecialties(_centerSpecialties);
+    final filteredCenterInsuranceCompanies = filterInsuranceCompanies(_centerInsuranceCompanies);
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
           title: Text(
-            widget.centerName != null ? 'إدارة التخصصات - ${widget.centerName}' : 'إدارة التخصصات',
+            widget.centerName != null ? 'إدارة شركات التأمين - ${widget.centerName}' : 'إدارة شركات التأمين',
             style: const TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -292,23 +289,22 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
           elevation: 0,
         ),
         body: Column(
-          children: [
+            children: [
             // Search and Add section
-            Container(
-              padding: const EdgeInsets.all(16),
+              Container(
+                padding: const EdgeInsets.all(16),
               color: Colors.grey[50],
               child: Column(
-                children: [
+                  children: [
                   // Search bar
                   TextField(
-                    controller: _searchController,
                     onChanged: (value) {
                       setState(() {
                         _searchQuery = value;
                       });
                     },
                     decoration: InputDecoration(
-                      hintText: 'البحث في التخصصات...',
+                      hintText: 'البحث في شركات التأمين...',
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -318,13 +314,13 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // Add specialty button
+                  // Add insurance company button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _showAddSpecialtyDialog,
+                      onPressed: _isLoading ? null : _showAddDialog,
                       icon: const Icon(Icons.add),
-                      label: Text(_isLoading ? 'جاري الإضافة...' : 'إضافة تخصص جديد'),
+                      label: Text(_isLoading ? 'جاري الإضافة...' : 'إضافة شركة تأمين جديدة'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color.fromARGB(255, 78, 17, 175),
                         foregroundColor: Colors.white,
@@ -334,32 +330,32 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            // Specialties list
-            Expanded(
+              // Insurance companies list
+              Expanded(
               child: _isLoading
-                  ? const Center(child: OptimizedLoadingWidget())
-                  : filteredCenterSpecialties.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : filteredCenterInsuranceCompanies.isEmpty
                       ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.medical_services_outlined,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                                Icons.business_outlined,
                                 size: 64,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
                                 _searchQuery.isEmpty
-                                    ? 'لا توجد تخصصات مضافة'
+                                    ? 'لا توجد شركات تأمين مضافة'
                                     : 'لا توجد نتائج للبحث',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.grey[600],
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey[600],
                                 ),
                               ),
                             ],
@@ -367,39 +363,53 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
                         )
                       : ListView.builder(
                           padding: const EdgeInsets.all(16),
-                          itemCount: filteredCenterSpecialties.length,
+                          itemCount: filteredCenterInsuranceCompanies.length,
                           itemBuilder: (context, index) {
-                            final specialty = filteredCenterSpecialties[index];
-                            final isActive = specialty['isActive'] ?? true;
+                            final insurance = filteredCenterInsuranceCompanies[index];
+                            final isActive = insurance['isActive'] ?? true;
 
                             return Card(
                               margin: const EdgeInsets.only(bottom: 8),
-                              child: ListTile(
+                          child: ListTile(
                                 leading: Icon(
-                                  Icons.medical_services,
+                                  Icons.business,
                                   color: isActive ? Colors.green : Colors.grey,
-                                ),
-                                title: Text(
-                                  specialty['name'],
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
+                            ),
+                            title: Text(
+                                  insurance['name'],
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
                                     color: isActive ? Colors.black : Colors.grey,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  isActive ? 'نشط' : 'غير نشط',
-                                  style: TextStyle(
-                                    color: isActive ? Colors.green : Colors.grey,
-                                  ),
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                    if (insurance['description']?.isNotEmpty == true)
+                                      Text(
+                                        insurance['description'],
+                                        style: TextStyle(
+                                          color: isActive ? Colors.grey[600] : Colors.grey,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    Text(
+                                      isActive ? 'نشط' : 'غير نشط',
+                                      style: TextStyle(
+                                        color: isActive ? Colors.green : Colors.grey,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 trailing: PopupMenuButton<String>(
                                   onSelected: (value) async {
                                     switch (value) {
                                       case 'toggle':
-                                        await toggleSpecialtyStatus(specialty['id'], isActive);
+                                        await toggleInsuranceStatus(insurance['id'], isActive);
                                         break;
                                       case 'delete':
-                                        await deleteSpecialty(specialty['id']);
+                                        await deleteInsuranceCompany(insurance['id']);
                                         break;
                                     }
                                   },
@@ -430,11 +440,11 @@ class _AdminSpecialtiesScreenState extends State<AdminSpecialtiesScreen> {
                                   ],
                                 ),
                               ),
-                            );
-                          },
-                        ),
-            ),
-          ],
+                    );
+                  },
+                ),
+              ),
+            ],
         ),
       ),
     );

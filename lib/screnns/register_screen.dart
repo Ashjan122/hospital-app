@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hospital_app/services/sms_service.dart';
+import 'package:hospital_app/screnns/otp_verification_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -12,7 +13,6 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -24,7 +24,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -48,61 +47,134 @@ class _RegisterScreenState extends State<RegisterScreen> {
       });
 
       try {
-        // Create user with email and password
-        final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-        );
-
-        // Save additional user data to Firestore
-        await FirebaseFirestore.instance
-            .collection('patients')
-            .doc(userCredential.user!.uid)
-            .set({
-          'name': _nameController.text.trim(),
-          'email': _emailController.text.trim(),
-          'phone': _phoneController.text.trim(),
-          'createdAt': FieldValue.serverTimestamp(),
-          'isActive': true,
-        });
-
-        if (mounted) {
+        // Validate and format phone number
+        final phoneNumber = _phoneController.text.trim();
+        // Remove any non-digit characters and the prefix
+        String digitsOnly = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
+        
+        // If it starts with 249, remove it
+        if (digitsOnly.startsWith('249')) {
+          digitsOnly = digitsOnly.substring(3);
+        }
+        
+        // If it's 10 digits and starts with 0, remove the 0
+        if (digitsOnly.length == 10 && digitsOnly.startsWith('0')) {
+          digitsOnly = digitsOnly.substring(1);
+        }
+        
+        if (digitsOnly.length != 9) {
           setState(() {
             _isLoading = false;
           });
-
-          // Navigate back to login screen
-          Navigator.of(context).pop();
-
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } on FirebaseAuthException catch (e) {
-        setState(() {
-          _isLoading = false;
-        });
-
-        String errorMessage = 'حدث خطأ أثناء إنشاء الحساب';
-        
-        if (e.code == 'weak-password') {
-          errorMessage = 'كلمة المرور ضعيفة جداً';
-        } else if (e.code == 'email-already-in-use') {
-          errorMessage = 'البريد الإلكتروني مستخدم بالفعل';
-        } else if (e.code == 'invalid-email') {
-          errorMessage = 'البريد الإلكتروني غير صحيح';
-        }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
+              content: Text('رقم الهاتف يجب أن يكون 9 أرقام (بدون المفتاح)'),
               backgroundColor: Colors.red,
             ),
           );
+          return;
+        }
+        
+        // Check if it starts with valid Sudanese prefixes (1 or 9)
+        if (!digitsOnly.startsWith('1') && !digitsOnly.startsWith('9')) {
+          setState(() {
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('رقم الهاتف يجب أن يبدأ بـ 1 أو 9'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        
+        // Format phone number with country code
+        final formattedPhoneNumber = '249$digitsOnly';
+
+        // Validate password strength
+        if (_passwordController.text.length < 6) {
+          setState(() {
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('كلمة المرور يجب أن تكون 6 أحرف على الأقل'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        // Check if phone number already exists
+        final existingPatient = await FirebaseFirestore.instance
+            .collection('patients')
+            .where('phone', isEqualTo: formattedPhoneNumber)
+            .get();
+
+        if (existingPatient.docs.isNotEmpty) {
+          setState(() {
+            _isLoading = false;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('رقم الهاتف مستخدم بالفعل'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
+        // Generate OTP and send SMS
+        print('🔍 بدء عملية إنشاء الحساب...');
+        print('📱 رقم الهاتف: $formattedPhoneNumber');
+        
+        String otp = SMSService.generateOTP();
+        print('🔐 رمز التحقق المُنشأ: $otp');
+        
+        print('📡 إرسال رمز التحقق...');
+        Map<String, dynamic> result = await SMSService.sendOTP(formattedPhoneNumber, otp);
+        print('📊 نتيجة الإرسال: $result');
+
+        if (result['success']) {
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+
+            // Navigate to OTP verification screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => OTPVerificationScreen(
+                  phoneNumber: formattedPhoneNumber,
+                  name: _nameController.text.trim(),
+                  password: _passwordController.text,
+                  initialOtp: otp,
+                  initialOtpCreatedAt: DateTime.now(),
+                ),
+              ),
+            );
+          }
+        } else {
+          print('❌ فشل في إرسال رمز التحقق');
+          print('السبب: ${result['message']}');
+          print('رمز الاستجابة: ${result['statusCode']}');
+          
+          setState(() {
+            _isLoading = false;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('فشل في إرسال رمز التحقق: ${result['message']}'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
         }
       } catch (e) {
         setState(() {
@@ -112,8 +184,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('حدث خطأ: $e'),
+              content: Text('حدث خطأ في إنشاء الحساب: $e'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -190,6 +263,62 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         const SizedBox(height: 32),
 
+                        // Phone field with country code
+                        TextFormField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          decoration: InputDecoration(
+                            labelText: 'رقم الهاتف *',
+                            hintText: '01XXXXXXXX أو 09XXXXXXXX',
+                            prefixIcon: const Icon(Icons.phone, color: Color.fromARGB(255, 78, 17, 175)),
+                            prefixText: '+249 ',
+                            prefixStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color.fromARGB(255, 78, 17, 175),
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Color.fromARGB(255, 78, 17, 175),
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'يرجى إدخال رقم الهاتف';
+                            }
+                            // Remove any non-digit characters and the prefix
+                            String digitsOnly = value.replaceAll(RegExp(r'[^0-9]'), '');
+                            
+                            // If it starts with 249, remove it
+                            if (digitsOnly.startsWith('249')) {
+                              digitsOnly = digitsOnly.substring(3);
+                            }
+                            
+                            // If it's 10 digits and starts with 0, remove the 0
+                            if (digitsOnly.length == 10 && digitsOnly.startsWith('0')) {
+                              digitsOnly = digitsOnly.substring(1);
+                            }
+                            
+                            if (digitsOnly.length != 9) {
+                              return 'رقم الهاتف يجب أن يكون 9 أرقام (بدون المفتاح)';
+                            }
+                            
+                            // Check if it starts with valid Sudanese prefixes (1 or 9)
+                            if (!digitsOnly.startsWith('1') && !digitsOnly.startsWith('9')) {
+                              return 'رقم الهاتف يجب أن يبدأ بـ 1 أو 9';
+                            }
+                            
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
                         // Name field
                         TextFormField(
                           controller: _nameController,
@@ -219,65 +348,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Email field
-                        TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: InputDecoration(
-                            labelText: 'البريد الإلكتروني',
-                            prefixIcon: const Icon(Icons.email, color: Color.fromARGB(255, 78, 17, 175)),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color.fromARGB(255, 78, 17, 175),
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال البريد الإلكتروني';
-                            }
-                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                              return 'يرجى إدخال بريد إلكتروني صحيح';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
 
-                        // Phone field
-                        TextFormField(
-                          controller: _phoneController,
-                          keyboardType: TextInputType.phone,
-                          decoration: InputDecoration(
-                            labelText: 'رقم الهاتف',
-                            prefixIcon: const Icon(Icons.phone, color: Color.fromARGB(255, 78, 17, 175)),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color.fromARGB(255, 78, 17, 175),
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال رقم الهاتف';
-                            }
-                            if (value.length < 10) {
-                              return 'رقم الهاتف يجب أن يكون 10 أرقام على الأقل';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
 
                         // Password field
                         TextFormField(
@@ -390,7 +461,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     ),
                                   )
                                 : const Text(
-                                    'إنشاء الحساب',
+                                    'إرسال رمز التحقق',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,

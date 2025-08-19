@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/doctors_screen.dart';
+import 'package:hospital_app/widgets/optimized_loading_widget.dart';
 
 class SpecialtiesScreen extends StatefulWidget {
   final String facilityId;
@@ -17,15 +18,21 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
   bool _isSearching = false;
 
   Future<List<QueryDocumentSnapshot>> fetchSpecialties() async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('medicalFacilities')
-        .doc(widget.facilityId)
-        .collection('specializations')
-        .where('isActive', isEqualTo: true)
-        .get();
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('medicalFacilities')
+          .doc(widget.facilityId)
+          .collection('specializations')
+          .where('isActive', isEqualTo: true)
+          .get()
+          .timeout(const Duration(seconds: 8));
 
-    _allSpecialties = snapshot.docs;
-    return snapshot.docs;
+      _allSpecialties = snapshot.docs;
+      return snapshot.docs;
+    } catch (e) {
+      print('خطأ في تحميل التخصصات: $e');
+      return [];
+    }
   }
 
   List<QueryDocumentSnapshot> getFilteredSpecialties() {
@@ -107,7 +114,10 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
           future: fetchSpecialties(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
+              return const OptimizedLoadingWidget(
+                message: 'جاري تحميل التخصصات...',
+                color: Color.fromARGB(255, 78, 17, 175),
+              );
             }
 
             final specialties = _searchQuery.isEmpty ? snapshot.data ?? [] : getFilteredSpecialties();
@@ -133,7 +143,25 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                           ),
                         ],
                       )
-                    : Text("لا توجد تخصصات حاليا"),
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.medical_services_outlined,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'لا توجد تخصصات حالياً',
+                            style: TextStyle(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
               );
             }
 

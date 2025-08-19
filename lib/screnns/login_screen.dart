@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/dashboard_screen.dart';
-import 'package:hospital_app/screnns/hospital_screen.dart';
+import 'package:hospital_app/screnns/patient_home_screen.dart';
 import 'package:hospital_app/screnns/register_screen.dart';
+import 'package:hospital_app/screnns/control_panel_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,7 +43,14 @@ class _LoginScreenState extends State<LoginScreen> {
     final userEmail = prefs.getString('userEmail');
 
     if (isLoggedIn) {
-      if (userType == 'admin' && centerId != null && centerName != null) {
+      if (userType == 'control') {
+        // Control user is logged in
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => const ControlPanelScreen(),
+          ),
+        );
+      } else if (userType == 'admin' && centerId != null && centerName != null) {
         // Admin is logged in
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
@@ -56,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
         // Patient is logged in
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (context) => HospitalScreen(),
+            builder: (context) => const PatientHomeScreen(),
           ),
         );
       } else if (userType == 'user' && centerId != null && centerName != null) {
@@ -73,7 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _saveLoginData(String userType, {String? centerId, String? centerName, String? userEmail}) async {
+  Future<void> _saveLoginData(String userType, {String? centerId, String? centerName, String? userEmail, String? userName, String? userId}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLoggedIn', true);
     await prefs.setString('userType', userType);
@@ -81,6 +89,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (centerId != null) await prefs.setString('centerId', centerId);
     if (centerName != null) await prefs.setString('centerName', centerName);
     if (userEmail != null) await prefs.setString('userEmail', userEmail);
+    if (userName != null) await prefs.setString('userName', userName);
+    if (userId != null) await prefs.setString('userId', userId);
   }
 
   Future<void> _saveFCMTokenForPatient(String patientId) async {
@@ -110,6 +120,24 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
       try {
+        // Check if control credentials (super admin)
+        if (_usernameController.text.trim().toLowerCase() == 'كنترول' && _passwordController.text == '11223344') {
+          // Control login - redirect to control panel
+          await _saveLoginData('control');
+          
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => const ControlPanelScreen(),
+              ),
+            );
+          }
+          return;
+        }
+        
         // Check if admin credentials (center ID or name)
         if (_passwordController.text == '12345678') {
           // Check if username is a center ID or name
@@ -170,50 +198,91 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           }
         } else {
-          // Check if input looks like an email
-          bool isEmail = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(_usernameController.text.trim());
+          // Check if input looks like a phone number
+          bool isPhoneNumber = RegExp(r'^[0-9+\-\s()]+$').hasMatch(_usernameController.text.trim());
           
-          if (isEmail) {
-            // Patient login with Firebase
-            final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-              email: _usernameController.text.trim(),
-              password: _passwordController.text,
-            );
+          if (isPhoneNumber) {
+            // Format phone number for search
+            String searchPhoneNumber = _usernameController.text.trim();
+            
+            // Remove any non-digit characters
+            String digitsOnly = searchPhoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
+            
+            // If it's a 9-digit number starting with 1 or 9, add country code
+            if (digitsOnly.length == 9 && (digitsOnly.startsWith('1') || digitsOnly.startsWith('9'))) {
+              searchPhoneNumber = '249$digitsOnly';
+            }
+            // If it's a 10-digit number starting with 01 or 09, remove first digit and add country code
+            else if (digitsOnly.length == 10 && (digitsOnly.startsWith('01') || digitsOnly.startsWith('09'))) {
+              searchPhoneNumber = '249${digitsOnly.substring(1)}';
+            }
+            // If it's already 12 digits starting with 249, use as is
+            else if (digitsOnly.length == 12 && digitsOnly.startsWith('249')) {
+              searchPhoneNumber = digitsOnly;
+            }
+            // If it's 12 digits starting with +249, remove + and use
+            else if (digitsOnly.length == 12 && searchPhoneNumber.startsWith('+249')) {
+              searchPhoneNumber = digitsOnly;
+            }
+            // If it's 11 digits starting with +249, remove + and use
+            else if (digitsOnly.length == 11 && searchPhoneNumber.startsWith('+249')) {
+              searchPhoneNumber = digitsOnly;
+            }
+            
+            // Patient login with phone number
+            // First, find the patient by phone number in Firestore
+            final patientsQuery = await FirebaseFirestore.instance
+                .collection('patients')
+                .where('phone', isEqualTo: searchPhoneNumber)
+                .get();
 
-            if (mounted) {
+                        if (patientsQuery.docs.isNotEmpty) {
+              final patientDoc = patientsQuery.docs.first;
+              final patientData = patientDoc.data();
+              final patientPassword = patientData['password'] ?? '';
+
+              if (patientPassword == _passwordController.text) {
+                // Direct login without Firebase Auth for phone-based login
+                final patientName = patientData['name'] ?? 'مريض عزيز';
+                final patientId = patientDoc.id;
+                
+                // Save patient login data
+                await _saveLoginData('patient', userEmail: searchPhoneNumber, userName: patientName, userId: patientId);
+                
+                // Save FCM token for patient
+                await _saveFCMTokenForPatient(patientId);
+                
+                if (mounted) {
+                  setState(() {
+                    _isLoading = false;
+                  });
+                  
+                  // Patient login - redirect to patient home screen
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+                  );
+                                 }
+              } else {
+                setState(() {
+                  _isLoading = false;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('كلمة المرور غير صحيحة'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            } else {
               setState(() {
                 _isLoading = false;
               });
-
-              // Check if user exists in patients collection
-              final userDoc = await FirebaseFirestore.instance
-                  .collection('patients')
-                  .doc(userCredential.user!.uid)
-                  .get();
-
-              if (mounted) {
-                if (userDoc.exists) {
-                  // Save patient login data
-                  await _saveLoginData('patient', userEmail: _usernameController.text.trim());
-                  
-                  // Save FCM token for patient
-                  await _saveFCMTokenForPatient(userCredential.user!.uid);
-                  
-                  // Patient login - redirect to hospital screen
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (context) => const HospitalScreen()),
-                  );
-                } else {
-                  // User not found in patients collection
-                  await FirebaseAuth.instance.signOut();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('بيانات غير صحيحة'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('رقم الهاتف غير موجود'),
+                  backgroundColor: Colors.red,
+                ),
+              );
             }
           } else {
             // Check if it's a user login by name
@@ -291,7 +360,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } else if (e.code == 'wrong-password') {
           errorMessage = 'كلمة المرور غير صحيحة';
         } else if (e.code == 'invalid-email') {
-          errorMessage = 'البريد الإلكتروني غير صحيح';
+          errorMessage = 'بيانات غير صحيحة';
         } else if (e.code == 'user-disabled') {
           errorMessage = 'تم تعطيل هذا الحساب';
         }
@@ -367,7 +436,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 24),
                         
                         // Title
-                        
+                        const Text(
+                          'تسجيل الدخول',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Color.fromARGB(255, 78, 17, 175),
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         const Text(
                           'سجل دخولك للمتابعة',
@@ -378,11 +454,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 32),
 
-                        // Username/Email field
+                        // Username/Email/Phone field
                         TextFormField(
                           controller: _usernameController,
                           decoration: InputDecoration(
-                            labelText:"البريد الالكتروني",
+                            labelText: "رقم الهاتف",
+                            hintText: "أدخل رقم الهاتف",
                             prefixIcon: const Icon(Icons.person, color: Color.fromARGB(255, 78, 17, 175)),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -397,7 +474,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'يرجى ادخال البريد الالكتروني';
+                              return 'يرجى إدخال رقم الهاتف';
                             }
                             return null;
                           },
@@ -503,6 +580,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                         ),
+
                       ],
                     ),
                   ),

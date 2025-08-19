@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:hospital_app/widgets/optimized_loading_widget.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   final String centerId;
@@ -31,7 +32,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           .collection('medicalFacilities')
           .doc(widget.centerId)
           .collection('users')
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 8));
 
       List<Map<String, dynamic>> users = [];
       for (var doc in usersSnapshot.docs) {
@@ -41,6 +43,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       }
       return users;
     } catch (e) {
+      print('خطأ في تحميل المستخدمين: $e');
       return [];
     }
   }
@@ -91,7 +94,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           .doc(widget.centerId)
           .collection('users')
           .where('phone', isEqualTo: _phoneController.text)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 8));
 
       if (existingUsers.docs.isNotEmpty) {
         _showErrorDialog('رقم الهاتف مسجل مسبقاً');
@@ -333,10 +337,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 future: fetchUsers(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        color: Color.fromARGB(255, 78, 17, 175),
-                      ),
+                    return const OptimizedLoadingWidget(
+                      message: 'جاري تحميل المستخدمين...',
+                      color: Color.fromARGB(255, 78, 17, 175),
                     );
                   }
 

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/admin_doctor_details_screen.dart';
 import 'package:hospital_app/screnns/add_doctor_screen.dart';
+import 'package:hospital_app/widgets/optimized_loading_widget.dart';
 
 class AdminDoctorsScreen extends StatefulWidget {
   final String? centerId;
@@ -30,14 +31,15 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
           .collection('medicalFacilities')
           .doc(widget.centerId)
           .collection('specializations')
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 8));
 
       List<Map<String, dynamic>> allDoctors = [];
       
-             // البحث في كل تخصص
-       for (var specDoc in snapshot.docs) {
-         final specializationData = specDoc.data();
-         final specializationName = specializationData['specName'] ?? specDoc.id;
+      // البحث في كل تخصص
+      for (var specDoc in snapshot.docs) {
+        final specializationData = specDoc.data();
+        final specializationName = specializationData['specName'] ?? specDoc.id;
         
         final doctorsSnapshot = await FirebaseFirestore.instance
             .collection('medicalFacilities')
@@ -45,7 +47,8 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
             .collection('specializations')
             .doc(specDoc.id)
             .collection('doctors')
-            .get();
+            .get()
+            .timeout(const Duration(seconds: 8));
         
         for (var doctorDoc in doctorsSnapshot.docs) {
           final doctorData = doctorDoc.data();
@@ -59,7 +62,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
       
       return allDoctors;
     } catch (e) {
-      print('Error fetching doctors: $e');
+      print('خطأ في تحميل الأطباء: $e');
       return [];
     }
   }
@@ -156,23 +159,9 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                    future: fetchDoctors(),
                    builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircularProgressIndicator(
-                              color: const Color.fromARGB(255, 78, 17, 175),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'جاري تحميل الأطباء...',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
+                      return const OptimizedLoadingWidget(
+                        message: 'جاري تحميل الأطباء...',
+                        color: Color.fromARGB(255, 78, 17, 175),
                       );
                     }
 

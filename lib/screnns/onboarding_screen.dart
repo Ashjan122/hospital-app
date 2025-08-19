@@ -34,7 +34,8 @@ class OnboardingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IntroductionScreen(
+    return SafeArea(
+      child: IntroductionScreen(
       pages: [
         PageViewModel(
           title: "مرحبا بك",
@@ -120,6 +121,7 @@ class OnboardingScreen extends StatelessWidget {
         ),
       ),
       showDoneButton: true,
+      ),
     );
   }
 }

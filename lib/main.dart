@@ -6,6 +6,7 @@ import 'package:hospital_app/screnns/onboarding_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hospital_app/widgets/app_update_wrapper.dart';
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -90,31 +91,33 @@ class HospitalApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: FutureBuilder<SharedPreferences>(
-        future: SharedPreferences.getInstance(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(),
-              ),
-            );
-          }
-          
-          if (snapshot.hasData) {
-            final prefs = snapshot.data!;
-            final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
-            
-            if (hasSeenOnboarding) {
-              return const LoginScreen();
-            } else {
-              return const OnboardingScreen();
+      home: AppUpdateWrapper(
+        child: FutureBuilder<SharedPreferences>(
+          future: SharedPreferences.getInstance(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
             }
-          }
-          
-          // في حالة الخطأ، نعرض شاشة تسجيل الدخول
-          return const LoginScreen();
-        },
+            
+            if (snapshot.hasData) {
+              final prefs = snapshot.data!;
+              final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
+              
+              if (hasSeenOnboarding) {
+                return const LoginScreen();
+              } else {
+                return const OnboardingScreen();
+              }
+            }
+            
+            // في حالة الخطأ، نعرض شاشة تسجيل الدخول
+            return const LoginScreen();
+          },
+        ),
       ),
     );
   }

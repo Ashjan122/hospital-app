@@ -54,5 +54,11 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	
+	<!-- أذونات الكاميرا والمعرض -->
+	<key>NSCameraUsageDescription</key>
+	<string>هذا التطبيق يحتاج إلى الوصول للكاميرا لالتقاط صور الأطباء</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>هذا التطبيق يحتاج إلى الوصول للمعرض لاختيار صور الأطباء</string>
 </dict>
 </plist>
