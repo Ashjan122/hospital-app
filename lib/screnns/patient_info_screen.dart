@@ -37,6 +37,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
   bool? isBookingForSelf; // null = لم يتم الاختيار بعد، true = لنفسه، false = لشخص آخر
   bool showBookingChoice = true; // عرض خيار الحجز لنفسه أم لشخص آخر
 
+
   @override
   void initState() {
     super.initState();
@@ -48,17 +49,41 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       isBookingForSelf = false; // تأجيل الحجز يعتبر لشخص آخر
       showBookingChoice = false; // لا نحتاج لخيار الحجز في التأجيل
     }
+    
+
   }
+
+
 
   Future<void> loadPatientData() async {
     final prefs = await SharedPreferences.getInstance();
     final userName = prefs.getString('userName');
     final userEmail = prefs.getString('userEmail'); // userEmail يحتوي على رقم الهاتف
     
+    if (!mounted) return;
+    
     if (userName != null && userEmail != null) {
+      // تنسيق رقم الهاتف ليكون 10 أرقام يبدأ بـ 0
+      String formattedPhone = userEmail;
+      
+      // إزالة المفتاح الدولي إذا كان موجوداً
+      if (formattedPhone.startsWith('249')) {
+        formattedPhone = '0' + formattedPhone.substring(3);
+      }
+      
+      // التأكد من أن الرقم يبدأ بـ 0
+      if (!formattedPhone.startsWith('0')) {
+        formattedPhone = '0' + formattedPhone;
+      }
+      
+      // التأكد من أن الرقم 10 أرقام
+      if (formattedPhone.length > 10) {
+        formattedPhone = formattedPhone.substring(0, 10);
+      }
+      
       setState(() {
         patientName = userName;
-        patientPhone = userEmail; // userEmail هو رقم الهاتف
+        patientPhone = formattedPhone;
       });
       
       if (mounted) {
@@ -166,7 +191,13 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
 
   Future<void> confirmBooking() async {
     if (isBookingForSelf == null) {
-      _showDialog("تنبيه", "يرجى اختيار نوع الحجز أولاً");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('يرجى اختيار نوع الحجز أولاً قبل إدخال البيانات'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
     
@@ -178,10 +209,49 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       return;
     }
 
+    // التحقق من الاسم الرباعي
+    List<String> nameParts = patientName!.trim().split(' ').where((part) => part.isNotEmpty).toList();
+    if (nameParts.length != 4) {
+      _showDialog("تنبيه", "يرجى إدخال الاسم الرباعي (4 أسماء)");
+      return;
+    }
+    
+    // التحقق من رقم الهاتف (10 أرقام)
+    String phoneDigits = patientPhone!.replaceAll(RegExp(r'[^0-9]'), '');
+    if (phoneDigits.length != 10) {
+      _showDialog("تنبيه", "رقم الهاتف يجب أن يكون 10 أرقام");
+      return;
+    }
+
+    // التحقق من عدم وجود حجز سابق لنفس الشخص في نفس اليوم
+    final checkDateStr = intl.DateFormat('yyyy-MM-dd').format(widget.selectedDate);
+    final existingBooking = await FirebaseFirestore.instance
+        .collection('medicalFacilities')
+        .doc(widget.facilityId)
+        .collection('specializations')
+        .doc(widget.specializationId)
+        .collection('doctors')
+        .doc(widget.doctorId)
+        .collection('appointments')
+        .where('date', isEqualTo: checkDateStr)
+        .where('patientPhone', isEqualTo: patientPhone)
+        .get();
+
+    if (existingBooking.docs.isNotEmpty) {
+      _showDialog("حجز موجود", "لديك حجز سابق في نفس اليوم لهذا الطبيب. لا يمكن الحجز مرة اخرى");
+      return;
+    }
+    
+
+
+    if (!mounted) return;
     setState(() => isLoading = true);
 
     final result = await getAvailableTime(widget.selectedDate);
+    if (!mounted) return;
+    
     if (result == null) {
+      if (!mounted) return;
       setState(() => isLoading = false);
       
       // فحص إذا كان السبب هو اكتمال العدد
@@ -260,6 +330,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
           'patientName': patientName,
           'patientPhone': patientPhone,
           'patientId': patientId, // Save patient ID instead of phone
+
           'date': dateStr,
           'time': availableTime,
           'period': period,
@@ -267,12 +338,23 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
           'isConfirmed': false, // الحجز الجديد يحتاج تأكيد
         });
 
+    if (!mounted) return;
+
     setState(() {
       isLoading = false;
       selectedTime = availableTime;
     });
 
     final actionText = widget.isReschedule ? "تم تأجيل الحجز" : "تم الحجز";
+    
+    // مسح البيانات بعد تأكيد الحجز
+    setState(() {
+      patientName = null;
+      patientPhone = null;
+      isBookingForSelf = null;
+      showBookingChoice = true;
+    });
+
     _showDialog(
       actionText,
       "تم تأكيد $actionText بتاريخ $dateStr الساعة $availableTime (${period == 'morning' ? 'صباحاً' : 'مساءً'})",
@@ -280,6 +362,8 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
   }
 
   void _selectBookingType(bool forSelf) async {
+    if (!mounted) return;
+    
     setState(() {
       isBookingForSelf = forSelf;
       showBookingChoice = false;
@@ -339,9 +423,10 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
             ),
           ),
         ),
-        body: isLoading
-            ? const Center(child: CircularProgressIndicator())
-                : Padding(
+        body: SafeArea(
+          child: isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Column(
                     children: [
@@ -433,6 +518,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                                 const Spacer(),
                                 TextButton(
                                   onPressed: () {
+                                    if (!mounted) return;
                                     setState(() {
                                       showBookingChoice = true;
                                       isBookingForSelf = null;
@@ -455,37 +541,101 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                           const SizedBox(height: 16),
                         ],
                         
-                        _buildFormField(
-                          "الاسم", 
-                          (val) => patientName = val,
-                          initialValue: patientName,
+
+                        
+                        // حقل الاسم الرباعي
+                        TextFormField(
+                          decoration: InputDecoration(
+                            labelText: 'الاسم الرباعي *',
+                            hintText: 'الاسم الأول - اسم الأب - اسم الجد - اسم العائلة',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.person),
+                          ),
+                          onTap: () {
+                            if (isBookingForSelf == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('يرجى اختيار نوع الحجز أولاً قبل إدخال البيانات'),
+                                  backgroundColor: Colors.red,
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          onChanged: (val) => patientName = val,
+                          textDirection: TextDirection.rtl,
+                          controller: patientName != null ? TextEditingController(text: patientName) : null,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'يرجى إدخال الاسم الرباعي';
+                            }
+                            
+                            List<String> nameParts = value.trim().split(' ').where((part) => part.isNotEmpty).toList();
+                            
+                            if (nameParts.length != 4) {
+                              return 'يرجى إدخال الاسم الرباعي (4 أسماء)';
+                            }
+                            
+                            return null;
+                          },
                         ),
                         const SizedBox(height: 16),
-                      _buildFormField(
-                        "رقم الهاتف",
-                        (val) => patientPhone = val,
-                        keyboard: TextInputType.phone,
-                          initialValue: patientPhone,
-                      ),
+                        
+                        // حقل رقم الهاتف
+                        TextFormField(
+                          decoration: InputDecoration(
+                            labelText: 'رقم الهاتف *',
+                            hintText: '01XXXXXXXX أو 09XXXXXXXX',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.phone),
+                          ),
+                          onTap: () {
+                            if (isBookingForSelf == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('يرجى اختيار نوع الحجز أولاً قبل إدخال البيانات'),
+                                  backgroundColor: Colors.red,
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          onChanged: (val) => patientPhone = val,
+                          keyboardType: TextInputType.phone,
+                          textDirection: TextDirection.rtl,
+                          controller: patientPhone != null ? TextEditingController(text: patientPhone) : null,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'يرجى إدخال رقم الهاتف';
+                            }
+                            
+                            String phoneDigits = value.replaceAll(RegExp(r'[^0-9]'), '');
+                            if (phoneDigits.length != 10) {
+                              return 'رقم الهاتف يجب أن يكون 10 أرقام';
+                            }
+                            
+                            return null;
+                          },
+                        ),
                         const SizedBox(height: 30),
                       ElevatedButton(
                         onPressed: confirmBooking,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color.fromARGB(255, 78, 17, 175),
-                            foregroundColor: Colors.white,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                          foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 24,
                             vertical: 12,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
                           ),
-                          child: Text(
-                            widget.isReschedule ? "تأكيد التأجيل" : "تأكيد الحجز",
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          widget.isReschedule ? "تأكيد التأجيل" : "تأكيد الحجز",
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
@@ -500,27 +650,8 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                     ],
                   ),
                 ),
+        ),
       ),
-    );
-  }
-
-
-
-  Widget _buildFormField(
-    String label,
-    Function(String) onChanged, {
-    TextInputType keyboard = TextInputType.text,
-    String? initialValue,
-  }) {
-    return TextFormField(
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(),
-      ),
-      onChanged: onChanged,
-      keyboardType: keyboard,
-      textDirection: TextDirection.rtl,
-      controller: initialValue != null ? TextEditingController(text: initialValue) : null,
     );
   }
 }

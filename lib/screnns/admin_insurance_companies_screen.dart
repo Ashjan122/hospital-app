@@ -207,7 +207,7 @@ class _AdminInsuranceCompaniesScreenState extends State<AdminInsuranceCompaniesS
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('إضافة شركة تأمين جديدة'),
+        title: const Text('إضافة شركة تأمين جديدة'),
           content: SizedBox(
             width: double.maxFinite,
             child: Column(
@@ -239,13 +239,13 @@ class _AdminInsuranceCompaniesScreenState extends State<AdminInsuranceCompaniesS
                   ),
                 ),
               ],
-            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('إلغاء'),
-            ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('إلغاء'),
+          ),
           ],
         ),
       ),

@@ -117,12 +117,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _isLoading = false;
           });
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('رقم الهاتف مستخدم بالفعل'),
-                backgroundColor: Colors.red,
-              ),
-            );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('رقم الهاتف مستخدم بالفعل'),
+              backgroundColor: Colors.red,
+            ),
+          );
           }
           return;
         }
@@ -167,13 +167,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _isLoading = false;
           });
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('فشل في إرسال رمز التحقق: ${result['message']}'),
-                backgroundColor: Colors.red,
+              backgroundColor: Colors.red,
                 duration: const Duration(seconds: 5),
-              ),
-            );
+            ),
+          );
           }
         }
       } catch (e) {
@@ -323,7 +323,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         TextFormField(
                           controller: _nameController,
                           decoration: InputDecoration(
-                            labelText: 'الاسم الكامل',
+                            labelText: 'الاسم الرباعي *',
+                            hintText: 'الاسم الأول - اسم الأب - اسم الجد - اسم العائلة',
                             prefixIcon: const Icon(Icons.person, color: Color.fromARGB(255, 78, 17, 175)),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -338,11 +339,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال الاسم الكامل';
+                              return 'يرجى إدخال الاسم الرباعي';
                             }
-                            if (value.length < 3) {
-                              return 'الاسم يجب أن يكون 3 أحرف على الأقل';
+                            
+                            // تقسيم الاسم إلى أجزاء
+                            List<String> nameParts = value.trim().split(' ').where((part) => part.isNotEmpty).toList();
+                            
+                            if (nameParts.length < 4) {
+                              return 'يرجى إدخال الاسم الرباعي (4 أسماء)';
                             }
+                            
+                            if (nameParts.length > 4) {
+                              return 'يرجى إدخال 4 أسماء فقط';
+                            }
+                            
+                            // التحقق من أن كل جزء يحتوي على حروف عربية أو إنجليزية
+                            for (String part in nameParts) {
+                              if (part.length < 2) {
+                                return 'كل جزء من الاسم يجب أن يكون حرفين على الأقل';
+                              }
+                            }
+                            
                             return null;
                           },
                         ),

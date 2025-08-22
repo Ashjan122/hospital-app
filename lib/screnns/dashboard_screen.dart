@@ -120,7 +120,7 @@ class DashboardScreen extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (context) => AdminDoctorsScreen(
-                                  centerId: centerId,
+                                  centerId: centerId!,
                                   centerName: centerName,
                                 ),
                               ),
@@ -219,24 +219,12 @@ class DashboardScreen extends StatelessWidget {
                         Icons.people,
                         const Color.fromARGB(255, 78, 17, 175),
                         () {
-                          if (centerId != null) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => AdminUsersScreen(
-                                  centerId: centerId!,
-                                  centerName: centerName,
-                                ),
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('يرجى تسجيل الدخول أولاً'),
-                                backgroundColor: Color.fromARGB(255, 78, 17, 175),
-                              ),
-                            );
-                          }
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const AdminUsersScreen(),
+                            ),
+                          );
                         },
                       ),
                       _buildDashboardCard(
@@ -321,7 +309,7 @@ class DashboardScreen extends StatelessWidget {
               width: 60,
               height: 60,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withAlpha(26),
                 borderRadius: BorderRadius.circular(30),
               ),
               child: Icon(

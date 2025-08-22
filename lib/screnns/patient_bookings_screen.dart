@@ -401,257 +401,259 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
             ),
           ),
         ),
-        body: Column(
-          children: [
-            // Filter chips
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    FilterChip(
-                      label: Text('الكل'),
-                      selected: _selectedFilter == 'all',
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedFilter = 'all';
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    FilterChip(
-                      label: Text('اليوم'),
-                      selected: _selectedFilter == 'today',
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedFilter = 'today';
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    FilterChip(
-                      label: Text('القادمة'),
-                      selected: _selectedFilter == 'upcoming',
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedFilter = 'upcoming';
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    FilterChip(
-                      label: Text('المنتهية'),
-                      selected: _selectedFilter == 'past',
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedFilter = 'past';
-                        });
-                      },
-                    ),
-                  ],
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Filter chips
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      FilterChip(
+                        label: Text('الكل'),
+                        selected: _selectedFilter == 'all',
+                        onSelected: (selected) {
+                          setState(() {
+                            _selectedFilter = 'all';
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: Text('اليوم'),
+                        selected: _selectedFilter == 'today',
+                        onSelected: (selected) {
+                          setState(() {
+                            _selectedFilter = 'today';
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: Text('القادمة'),
+                        selected: _selectedFilter == 'upcoming',
+                        onSelected: (selected) {
+                          setState(() {
+                            _selectedFilter = 'upcoming';
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: Text('المنتهية'),
+                        selected: _selectedFilter == 'past',
+                        onSelected: (selected) {
+                          setState(() {
+                            _selectedFilter = 'past';
+                          });
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
-            // Bookings list
-            Expanded(
-              child: _isLoading
-                  ? const OptimizedLoadingWidget(
-                      message: 'جاري تحميل الحجوزات...',
-                      color: Color.fromARGB(255, 78, 17, 175),
-                    )
-                  : filteredBookings.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.calendar_today,
-                                size: 64,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'لا توجد حجوزات',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.w500,
+              // Bookings list
+              Expanded(
+                child: _isLoading
+                    ? const OptimizedLoadingWidget(
+                        message: 'جاري تحميل الحجوزات...',
+                        color: Color.fromARGB(255, 78, 17, 175),
+                      )
+                    : filteredBookings.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.calendar_today,
+                                  size: 64,
+                                  color: Colors.grey[400],
                                 ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: filteredBookings.length,
-                          itemBuilder: (context, index) {
-                            final booking = filteredBookings[index];
-                            final status = _getStatusText(booking);
-                            final statusColor = _getStatusColor(status);
+                                const SizedBox(height: 16),
+                                Text(
+                                  'لا توجد حجوزات',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: filteredBookings.length,
+                            itemBuilder: (context, index) {
+                              final booking = filteredBookings[index];
+                              final status = _getStatusText(booking);
+                              final statusColor = _getStatusColor(status);
 
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              elevation: 4,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                booking['patientName'] ?? 'غير محدد',
-                                                style: const TextStyle(
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.bold,
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                elevation: 4,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  booking['patientName'] ?? 'غير محدد',
+                                                  style: const TextStyle(
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
                                                 ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                'د. ${booking['doctorName']}',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  color: Colors.grey[600],
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  'د. ${booking['doctorName']}',
+                                                  style: TextStyle(
+                                                    fontSize: 16,
+                                                    color: Colors.grey[600],
+                                                  ),
                                                 ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 6,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: statusColor.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(20),
-                                            border: Border.all(color: statusColor),
-                                          ),
-                                          child: Text(
-                                            status,
-                                            style: TextStyle(
-                                              color: statusColor,
-                                              fontWeight: FontWeight.bold,
+                                              ],
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        Icon(Icons.location_on, size: 16, color: Colors.grey[600]),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            booking['facilityName'],
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 6,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: statusColor.withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(20),
+                                              border: Border.all(color: statusColor),
+                                            ),
+                                            child: Text(
+                                              status,
+                                              style: TextStyle(
+                                                color: statusColor,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.location_on, size: 16, color: Colors.grey[600]),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              booking['facilityName'],
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                color: Colors.grey[600],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.medical_services, size: 16, color: Colors.grey[600]),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            booking['specializationName'],
                                             style: TextStyle(
                                               fontSize: 14,
                                               color: Colors.grey[600],
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        Icon(Icons.medical_services, size: 16, color: Colors.grey[600]),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          booking['specializationName'],
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          booking['date'] ?? 'غير محدد',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          '${booking['time']} (${booking['period'] == 'morning' ? 'صباحاً' : 'مساءً'})',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    // Action buttons
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            onPressed: () => _rescheduleBooking(booking),
-                                            icon: const Icon(Icons.schedule, size: 16),
-                                            label: const Text('تأجيل'),
-                                            style: OutlinedButton.styleFrom(
-                                              foregroundColor: Colors.blue,
-                                              side: const BorderSide(color: Colors.blue),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            booking['date'] ?? 'غير محدد',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.grey[600],
                                             ),
                                           ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            onPressed: _cancellingBookings.contains(booking['id'])
-                                                ? null
-                                                : () => _cancelBooking(booking),
-                                            icon: _cancellingBookings.contains(booking['id'])
-                                                ? const SizedBox(
-                                                    width: 16,
-                                                    height: 16,
-                                                    child: CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      color: Colors.red,
-                                                    ),
-                                                  )
-                                                : const Icon(Icons.cancel, size: 16),
-                                            label: Text(
-                                              _cancellingBookings.contains(booking['id'])
-                                                  ? 'جاري الإلغاء...'
-                                                  : 'إلغاء',
-                                            ),
-                                            style: OutlinedButton.styleFrom(
-                                              foregroundColor: Colors.red,
-                                              side: const BorderSide(color: Colors.red),
+                                          const SizedBox(width: 16),
+                                          Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${booking['time']} (${booking['period'] == 'morning' ? 'صباحاً' : 'مساءً'})',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.grey[600],
                                             ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      // Action buttons
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: OutlinedButton.icon(
+                                              onPressed: () => _rescheduleBooking(booking),
+                                              icon: const Icon(Icons.schedule, size: 16),
+                                              label: const Text('تأجيل'),
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: Colors.blue,
+                                                side: const BorderSide(color: Colors.blue),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: OutlinedButton.icon(
+                                              onPressed: _cancellingBookings.contains(booking['id'])
+                                                  ? null
+                                                  : () => _cancelBooking(booking),
+                                              icon: _cancellingBookings.contains(booking['id'])
+                                                  ? const SizedBox(
+                                                      width: 16,
+                                                      height: 16,
+                                                      child: CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: Colors.red,
+                                                      ),
+                                                    )
+                                                  : const Icon(Icons.cancel, size: 16),
+                                              label: Text(
+                                                _cancellingBookings.contains(booking['id'])
+                                                    ? 'جاري الإلغاء...'
+                                                    : 'إلغاء',
+                                              ),
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: Colors.red,
+                                                side: const BorderSide(color: Colors.red),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-            ),
-          ],
+                              );
+                            },
+                          ),
+              ),
+            ],
+          ),
         ),
       ),
     );

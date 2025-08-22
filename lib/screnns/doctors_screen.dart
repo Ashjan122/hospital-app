@@ -69,8 +69,6 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     }).toList();
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -129,148 +127,150 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                   ),
                 ),
         ),
-        body: StreamBuilder<QuerySnapshot>(
-          stream: _doctorsStream,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const OptimizedLoadingWidget(
-                message: 'جاري تحميل الأطباء...',
-                color: Color.fromARGB(255, 78, 17, 175),
-              );
-            }
+        body: SafeArea(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: _doctorsStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const OptimizedLoadingWidget(
+                  message: 'جاري تحميل الأطباء...',
+                  color: Color.fromARGB(255, 78, 17, 175),
+                );
+              }
 
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.medical_services_outlined,
-                      size: 64,
-                      color: Colors.grey[400],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'لا يوجد أطباء حالياً',
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.grey[600],
-                        fontWeight: FontWeight.w500,
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.medical_services_outlined,
+                        size: 64,
+                        color: Colors.grey[400],
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            _allDoctors = snapshot.data!.docs;
-            final doctors = _searchQuery.isEmpty ? _allDoctors : getFilteredDoctors();
-            
-            if (_searchQuery.isNotEmpty && doctors.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.search_off,
-                      size: 64,
-                      color: Colors.grey[400],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'لا يوجد أطباء تطابق البحث',
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.grey[600],
-                        fontWeight: FontWeight.w500,
+                      const SizedBox(height: 16),
+                      Text(
+                        'لا يوجد أطباء حالياً',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }
-
-            return ListView.builder(
-              itemCount: doctors.length,
-              itemBuilder: (context, index) {
-                final doc = doctors[index];
-                final doctorData = doc.data() as Map<String, dynamic>;
-                final doctorName = doctorData['docName'] ?? 'طبيب غير معروف';
-                final dynamic rawPhoto = doctorData['photoUrl'];
-                final String photoUrl = (rawPhoto is String) ? rawPhoto.trim() : '';
-                final bool hasValidPhoto = photoUrl.startsWith('http');
-                const String fallbackUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
-                final String effectiveUrl = hasValidPhoto ? photoUrl : fallbackUrl;
-
-                return GestureDetector(
-                  key: ValueKey(doc.id),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder:
-                            (context) => BookingScreen(
-                              facilityId: widget.facilityId,
-                              specializationId: widget.specId,
-                              doctorId: doc.id,
-                              name: doctorName,
-                              workingSchedule: Map<String, dynamic>.from(
-                                (doc.data() as Map<String, dynamic>)['workingSchedule'] ?? {},
-                              ),
-                            ),
-                      ),
-                    );
-                  },
-                  child: Card(
-                    margin: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    elevation: 6,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(50),
-                            child: Image.network(
-                              effectiveUrl,
-                              width: 60,
-                              height: 60,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stack) {
-                                return Container(
-                                  width: 60,
-                                  height: 60,
-                                  color: Colors.grey[300],
-                                  child: const Icon(Icons.person, color: Colors.grey),
-                                );
-                              },
-                            ),
-                          ),
-                          SizedBox(width: 16),
-
-                          Expanded(
-                            child: Text(
-                              doctorName,
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_forward_ios,
-                            color: Colors.grey[600],
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
                 );
-              },
-            );
-          },
+              }
+
+              _allDoctors = snapshot.data!.docs;
+              final doctors = _searchQuery.isEmpty ? _allDoctors : getFilteredDoctors();
+              
+              if (_searchQuery.isNotEmpty && doctors.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.search_off,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'لا يوجد أطباء تطابق البحث',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                itemCount: doctors.length,
+                itemBuilder: (context, index) {
+                  final doc = doctors[index];
+                  final doctorData = doc.data() as Map<String, dynamic>;
+                  final doctorName = doctorData['docName'] ?? 'طبيب غير معروف';
+                  final dynamic rawPhoto = doctorData['photoUrl'];
+                  final String photoUrl = (rawPhoto is String) ? rawPhoto.trim() : '';
+                  final bool hasValidPhoto = photoUrl.startsWith('http');
+                  const String fallbackUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
+                  final String effectiveUrl = hasValidPhoto ? photoUrl : fallbackUrl;
+
+                  return GestureDetector(
+                    key: ValueKey(doc.id),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (context) => BookingScreen(
+                                facilityId: widget.facilityId,
+                                specializationId: widget.specId,
+                                doctorId: doc.id,
+                                name: doctorName,
+                                workingSchedule: Map<String, dynamic>.from(
+                                  (doc.data() as Map<String, dynamic>)['workingSchedule'] ?? {},
+                                ),
+                              ),
+                        ),
+                      );
+                    },
+                    child: Card(
+                      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      elevation: 6,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(50),
+                              child: Image.network(
+                                effectiveUrl,
+                                width: 60,
+                                height: 60,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stack) {
+                                  return Container(
+                                    width: 60,
+                                    height: 60,
+                                    color: Colors.grey[300],
+                                    child: const Icon(Icons.person, color: Colors.grey),
+                                  );
+                                },
+                              ),
+                            ),
+                            SizedBox(width: 16),
+
+                            Expanded(
+                              child: Text(
+                                doctorName,
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              color: Colors.grey[600],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );

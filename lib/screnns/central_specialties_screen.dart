@@ -9,8 +9,8 @@ class CentralSpecialtiesScreen extends StatefulWidget {
 }
 
 class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
-  bool _isLoading = false;
   String _searchQuery = '';
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +19,7 @@ class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text(
-            'إدارة التخصصات المركزية',
+            'إدارة التخصصات',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -29,133 +29,145 @@ class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
           foregroundColor: Colors.white,
           elevation: 0,
         ),
-        body: Column(
-          children: [
-            // Search bar
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.grey[50],
-              child: TextField(
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value;
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'البحث في التخصصات...',
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Search bar
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.grey[50],
+                child: TextField(
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'البحث في التخصصات...',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
                   ),
-                  filled: true,
-                  fillColor: Colors.white,
                 ),
               ),
-            ),
-            // Specialties list
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('medicalSpecialties')
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error, color: Colors.red, size: 64),
-                          const SizedBox(height: 16),
-                          Text('خطأ في الاتصال: ${snapshot.error}'),
-                        ],
-                      ),
-                    );
-                  }
-
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  final specialties = snapshot.data?.docs ?? [];
-                  
-                  // Filter specialties based on search query
-                  final filteredSpecialties = specialties.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final name = data['name']?.toString().toLowerCase() ?? '';
-                    final description = data['description']?.toString().toLowerCase() ?? '';
-                    return name.contains(_searchQuery.toLowerCase()) ||
-                           description.contains(_searchQuery.toLowerCase());
-                  }).toList();
-
-                  if (filteredSpecialties.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _searchQuery.isEmpty ? Icons.medical_services : Icons.search_off,
-                            size: 64,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _searchQuery.isEmpty 
-                                ? 'لا توجد تخصصات'
-                                : 'لم يتم العثور على تخصصات تطابق البحث',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: filteredSpecialties.length,
-                    itemBuilder: (context, index) {
-                      final doc = filteredSpecialties[index];
-                      final data = doc.data() as Map<String, dynamic>;
-                      final name = data['name'] ?? 'تخصص غير معروف';
-                      final description = data['description'] ?? '';
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          leading: Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                            child: const Icon(
-                              Icons.medical_services,
-                              color: Color.fromARGB(255, 78, 17, 175),
-                            ),
-                          ),
-                          title: Text(
-                            name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          
-                                                     trailing: IconButton(
-                             onPressed: () => _showEditSpecialtyDialog(doc.id, name, description),
-                             icon: const Icon(Icons.edit, color: Colors.blue),
-                             tooltip: 'تعديل',
-                           ),
+              // Specialties list
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('medicalSpecialties')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error, color: Colors.red, size: 64),
+                            const SizedBox(height: 16),
+                            Text('خطأ في الاتصال: ${snapshot.error}'),
+                          ],
                         ),
                       );
-                    },
-                  );
-                },
+                    }
+
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final specialties = snapshot.data?.docs ?? [];
+                    
+                    // Filter specialties based on search query
+                    final filteredSpecialties = specialties.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final name = data['name']?.toString().toLowerCase() ?? '';
+                      final description = data['description']?.toString().toLowerCase() ?? '';
+                      return name.contains(_searchQuery.toLowerCase()) ||
+                             description.contains(_searchQuery.toLowerCase());
+                    }).toList();
+
+                    if (filteredSpecialties.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _searchQuery.isEmpty ? Icons.medical_services : Icons.search_off,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _searchQuery.isEmpty 
+                                  ? 'لا توجد تخصصات'
+                                  : 'لم يتم العثور على تخصصات تطابق البحث',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: filteredSpecialties.length,
+                      itemBuilder: (context, index) {
+                        final doc = filteredSpecialties[index];
+                        final data = doc.data() as Map<String, dynamic>;
+                        final name = data['name'] ?? 'تخصص غير معروف';
+                        final description = data['description'] ?? '';
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(16),
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.medical_services,
+                                color: Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            ),
+                            title: Text(
+                              name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            subtitle: description.isNotEmpty
+                                ? Text(description)
+                                : null,
+                            trailing: IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () => _showEditSpecialtyDialog(
+                                doc.id,
+                                name,
+                                description,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: () => _showAddSpecialtyDialog(),
@@ -188,6 +200,7 @@ class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
 
   void _showAddSpecialtyDialog() {
     final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
 
     showDialog(
       context: context,
@@ -203,6 +216,15 @@ class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'وصف التخصص (اختياري)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
           ],
         ),
         actions: [
@@ -214,7 +236,10 @@ class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
             onPressed: () async {
               if (nameController.text.trim().isNotEmpty) {
                 Navigator.pop(context);
-                await _addSpecialty(nameController.text.trim(), '');
+                await _addSpecialty(
+                  nameController.text.trim(),
+                  descriptionController.text.trim(),
+                );
               }
             },
             style: ElevatedButton.styleFrom(
@@ -230,6 +255,7 @@ class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
 
   void _showEditSpecialtyDialog(String id, String currentName, String currentDescription) {
     final nameController = TextEditingController(text: currentName);
+    final descriptionController = TextEditingController(text: currentDescription);
 
     showDialog(
       context: context,
@@ -245,6 +271,15 @@ class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'وصف التخصص (اختياري)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
           ],
         ),
         actions: [
@@ -256,7 +291,11 @@ class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
             onPressed: () async {
               if (nameController.text.trim().isNotEmpty) {
                 Navigator.pop(context);
-                await _updateSpecialty(id, nameController.text.trim(), currentDescription);
+                await _updateSpecialty(
+                  id,
+                  nameController.text.trim(),
+                  descriptionController.text.trim(),
+                );
               }
             },
             style: ElevatedButton.styleFrom(
@@ -269,8 +308,6 @@ class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
       ),
     );
   }
-
-
 
   Future<void> _addSpecialty(String name, String description) async {
     setState(() {
@@ -350,6 +387,4 @@ class _CentralSpecialtiesScreenState extends State<CentralSpecialtiesScreen> {
       });
     }
   }
-
-
 }

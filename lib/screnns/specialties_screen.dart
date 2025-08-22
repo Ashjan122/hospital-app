@@ -49,8 +49,6 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
     }).toList();
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -78,146 +76,146 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                     icon: Icon(Icons.search, color: Color.fromARGB(255, 78, 17, 175)),
                   ),
           ],
-                      title: _isSearching
-                ? TextField(
-                    controller: _searchController,
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value;
-                      });
-                    },
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      hintText: 'البحث عن تخصص طبي...',
-                      border: InputBorder.none,
-                      hintStyle: TextStyle(
-                        color: Colors.grey[400],
-                        fontSize: 16,
-                      ),
-                    ),
-                    style: TextStyle(
-                      color: Colors.black,
+          title: _isSearching
+              ? TextField(
+                  controller: _searchController,
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'البحث عن تخصص طبي...',
+                    border: InputBorder.none,
+                    hintStyle: TextStyle(
+                      color: Colors.grey[400],
                       fontSize: 16,
                     ),
-                  )
-                : Text(
-                    "التخصصات الطبية",
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: const Color.fromARGB(255, 78, 17, 175),
-                      fontSize: 30,
-                    ),
                   ),
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 16,
+                  ),
+                )
+              : Text(
+                  "التخصصات الطبية",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: const Color.fromARGB(255, 78, 17, 175),
+                    fontSize: 30,
+                  ),
+                ),
         ),
+        body: SafeArea(
+          child: FutureBuilder<List<QueryDocumentSnapshot>>(
+            future: fetchSpecialties(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const OptimizedLoadingWidget(
+                  message: 'جاري تحميل التخصصات...',
+                  color: Color.fromARGB(255, 78, 17, 175),
+                );
+              }
 
-        body: FutureBuilder<List<QueryDocumentSnapshot>>(
-          future: fetchSpecialties(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const OptimizedLoadingWidget(
-                message: 'جاري تحميل التخصصات...',
-                color: Color.fromARGB(255, 78, 17, 175),
-              );
-            }
+              final specialties = _searchQuery.isEmpty ? snapshot.data ?? [] : getFilteredSpecialties();
+              if (specialties.isEmpty) {
+                return Center(
+                  child: _searchQuery.isNotEmpty
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.search_off,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'لا يوجد تخصصات تطابق البحث',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.medical_services_outlined,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'لا توجد تخصصات حالياً',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                );
+              }
 
-            final specialties = _searchQuery.isEmpty ? snapshot.data ?? [] : getFilteredSpecialties();
-            if (specialties.isEmpty) {
-              return Center(
-                child: _searchQuery.isNotEmpty
-                    ? Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.search_off,
-                            size: 64,
-                            color: Colors.grey[400],
+              return ListView.builder(
+                itemCount: specialties.length,
+                itemBuilder: (context, index) {
+                  final doc = specialties[index];
+                  final data = doc.data() as Map<String, dynamic>;
+                  final specName = data['specName'] ?? 'تخصص غير معروف';
+                  final specId = doc.id;
+
+                  return InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DoctorsScreen(
+                            facilityId: widget.facilityId,
+                            specId: specId,
                           ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'لا يوجد تخصصات تطابق البحث',
+                        ),
+                      );
+                    },
+                    child: SizedBox(
+                      width: 300,
+                      height: 100,
+                      child: Card(
+                        elevation: 6,
+                        margin: EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 10,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.medical_services,
+                            color: Color.fromARGB(255, 78, 17, 175),
+                          ),
+                          title: Text(
+                            specName,
                             style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.grey[600],
-                              fontWeight: FontWeight.w500,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ],
-                      )
-                    : Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.medical_services_outlined,
-                            size: 64,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'لا توجد تخصصات حالياً',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.grey[600],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-              );
-            }
-
-            return ListView.builder(
-              itemCount: specialties.length,
-              itemBuilder: (context, index) {
-                final doc = specialties[index];
-                final data = doc.data() as Map<String, dynamic>;
-                final specName = data['specName'] ?? 'تخصص غير معروف';
-                final specId = doc.id;
-
-                return InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DoctorsScreen(
-                          facilityId: widget.facilityId,
-                          specId: specId,
-                          
+                          trailing: Icon(Icons.arrow_forward_ios, size: 16),
                         ),
-                      ),
-                    );
-                  },
-                  child: SizedBox(
-                    width: 300,
-                    height: 100,
-                    child: Card(
-                      elevation: 6,
-                      margin: EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: ListTile(
-                        leading: Icon(
-                          Icons.medical_services,
-                          color: Color.fromARGB(255, 78, 17, 175),
-                        ),
-                        title: Text(
-                          specName,
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        trailing: Icon(Icons.arrow_forward_ios, size: 16),
                       ),
                     ),
-                  ),
-                );
-              },
-            );
-          },
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );

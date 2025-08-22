@@ -42,57 +42,59 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
             ),
           ),
         ),
-        body: Container(
-          color: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-                              children: [
+        body: SafeArea(
+          child: Container(
+            color: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
                   // Cards section
-                Expanded(
-                  child: Column(
-                    children: [
-                      // Medical Specialties Card (احجز الان)
-                      _buildCard(
-                        title: "احجز الان",
-                        subtitle: "استكشف التخصصات المتاحة",
-                        icon: Icons.medical_services,
-                        color: const Color.fromARGB(255, 78, 17, 175),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => SpecialtiesScreen(
-                                facilityId: widget.facilityId,
+                  Expanded(
+                    child: Column(
+                      children: [
+                        // Medical Specialties Card (احجز الان)
+                        _buildCard(
+                          title: "احجز الان",
+                          subtitle: "استكشف التخصصات المتاحة",
+                          icon: Icons.medical_services,
+                          color: const Color.fromARGB(255, 78, 17, 175),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => SpecialtiesScreen(
+                                  facilityId: widget.facilityId,
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // Insurance Companies Card
-                      _buildCard(
-                        title: "شركات التأمين",
-                        subtitle: "عرض شركات التأمين المتعاقدة",
-                        icon: Icons.security,
-                        color: const Color.fromARGB(255, 78, 17, 175),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => InsuranceCompaniesScreen(
-                                facilityId: widget.facilityId,
-                                facilityName: widget.facilityName,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Insurance Companies Card
+                        _buildCard(
+                          title: "شركات التأمين",
+                          subtitle: "عرض شركات التأمين المتعاقدة",
+                          icon: Icons.security,
+                          color: const Color.fromARGB(255, 78, 17, 175),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => InsuranceCompaniesScreen(
+                                  facilityId: widget.facilityId,
+                                  facilityName: widget.facilityName,
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

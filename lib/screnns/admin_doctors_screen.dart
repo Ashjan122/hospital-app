@@ -1,8 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:hospital_app/screnns/admin_doctor_details_screen.dart';
-import 'package:hospital_app/screnns/add_doctor_screen.dart';
-import 'package:hospital_app/widgets/optimized_loading_widget.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'admin_doctor_details_screen.dart';
+import 'add_doctor_screen.dart';
 
 class AdminDoctorsScreen extends StatefulWidget {
   final String? centerId;
@@ -10,8 +9,8 @@ class AdminDoctorsScreen extends StatefulWidget {
 
   const AdminDoctorsScreen({
     super.key,
-    this.centerId,
-    this.centerName,
+    required this.centerId,
+    required this.centerName,
   });
 
   @override
@@ -19,25 +18,30 @@ class AdminDoctorsScreen extends StatefulWidget {
 }
 
 class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
-  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   Future<List<Map<String, dynamic>>> fetchDoctors() async {
     if (widget.centerId == null) return [];
-    
+
     try {
-      // جلب جميع الأطباء من جميع التخصصات
-      final snapshot = await FirebaseFirestore.instance
+      // جلب جميع التخصصات
+      final specializationsSnapshot = await FirebaseFirestore.instance
           .collection('medicalFacilities')
           .doc(widget.centerId)
           .collection('specializations')
-          .get()
-          .timeout(const Duration(seconds: 8));
+          .get();
 
       List<Map<String, dynamic>> allDoctors = [];
       
       // البحث في كل تخصص
-      for (var specDoc in snapshot.docs) {
+      for (var specDoc in specializationsSnapshot.docs) {
         final specializationData = specDoc.data();
         final specializationName = specializationData['specName'] ?? specDoc.id;
         
@@ -47,14 +51,40 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
             .collection('specializations')
             .doc(specDoc.id)
             .collection('doctors')
-            .get()
-            .timeout(const Duration(seconds: 8));
+            .get();
         
         for (var doctorDoc in doctorsSnapshot.docs) {
           final doctorData = doctorDoc.data();
-          // إضافة اسم التخصص لكل طبيب
+          final doctorId = doctorDoc.id;
+          
+          // جلب معلومات الطبيب من قاعدة البيانات المركزية
+          String doctorName = 'طبيب غير معروف';
+          String doctorPhone = '';
+          String photoUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
+          
+          try {
+            final centralDoctorDoc = await FirebaseFirestore.instance
+                .collection('allDoctors')
+                .doc(doctorId)
+                .get();
+            
+            if (centralDoctorDoc.exists) {
+              final centralDoctorData = centralDoctorDoc.data()!;
+              doctorName = centralDoctorData['name'] ?? 'طبيب غير معروف';
+              doctorPhone = centralDoctorData['phoneNumber'] ?? '';
+              photoUrl = centralDoctorData['photoUrl'] ?? photoUrl;
+            }
+          } catch (e) {
+            // إذا فشل في جلب البيانات من المركزية، استخدم المعرف
+            doctorName = doctorId;
+          }
+          
+          // إضافة معلومات إضافية لكل طبيب
+          doctorData['name'] = doctorName;
+          doctorData['phoneNumber'] = doctorPhone;
+          doctorData['photoUrl'] = photoUrl;
           doctorData['specialization'] = specializationName;
-          doctorData['doctorId'] = doctorDoc.id;
+          doctorData['doctorId'] = doctorId;
           doctorData['specializationId'] = specDoc.id;
           allDoctors.add(doctorData);
         }
@@ -62,21 +92,9 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
       
       return allDoctors;
     } catch (e) {
-      print('خطأ في تحميل الأطباء: $e');
+      // Error fetching doctors
       return [];
     }
-  }
-
-  List<Map<String, dynamic>> filterDoctors(List<Map<String, dynamic>> doctors) {
-    if (_searchQuery.isEmpty) return doctors;
-    
-    return doctors.where((doctorData) {
-      final doctorName = doctorData['docName']?.toString().toLowerCase() ?? '';
-      final specialization = doctorData['specialization']?.toString().toLowerCase() ?? '';
-      
-      return doctorName.contains(_searchQuery.toLowerCase()) ||
-             specialization.contains(_searchQuery.toLowerCase());
-    }).toList();
   }
 
   @override
@@ -86,265 +104,262 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(
-            "إدارة الأطباء",
-            style: TextStyle(
+            'إدارة الأطباء - ${widget.centerName ?? 'المركز الطبي'}',
+            style: const TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.white,
-              fontSize: 24,
             ),
           ),
           backgroundColor: const Color.fromARGB(255, 78, 17, 175),
           foregroundColor: Colors.white,
           elevation: 0,
         ),
-        body: Container(
-          color: Colors.grey[50],
-          child: Column(
-            children: [
-              // Search and Add section
-              Container(
-                padding: const EdgeInsets.all(16),
-                color: Colors.white,
-                child: Column(
-                  children: [
-                    // Search bar
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (value) {
-                          setState(() {
-                            _searchQuery = value;
-                          });
-                        },
-                        decoration: InputDecoration(
-                          hintText: 'البحث عن طبيب...',
-                          prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        body: SafeArea(
+          child: Container(
+            color: Colors.grey[50],
+            child: Column(
+              children: [
+                // Search and Add section
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  color: Colors.white,
+                  child: Column(
+                    children: [
+                      // Search bar
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[300]!),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Add doctor button
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          _showAddDoctorDialog(context);
-                        },
-                        icon: Icon(Icons.add),
-                        label: Text('إضافة طبيب جديد'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color.fromARGB(255, 78, 17, 175),
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (value) {
+                            setState(() {
+                              _searchQuery = value;
+                            });
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'البحث عن طبيب...',
+                            prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      // Add doctor button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            _showAddDoctorDialog(context);
+                          },
+                          icon: Icon(Icons.add),
+                          label: Text('إضافة طبيب جديد'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              
-                             // Doctors list
-               Expanded(
-                 child: FutureBuilder<List<Map<String, dynamic>>>(
-                   future: fetchDoctors(),
-                   builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const OptimizedLoadingWidget(
-                        message: 'جاري تحميل الأطباء...',
-                        color: Color.fromARGB(255, 78, 17, 175),
-                      );
-                    }
+                
+                // Doctors list
+                Expanded(
+                  child: FutureBuilder<List<Map<String, dynamic>>>(
+                    future: fetchDoctors(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            color: Color.fromARGB(255, 78, 17, 175),
+                          ),
+                        );
+                      }
 
-                    if (snapshot.hasError) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: 64,
-                              color: Colors.red[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'حدث خطأ في تحميل البيانات',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey[600],
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 64,
+                                color: Colors.red[400],
                               ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'حدث خطأ في تحميل البيانات',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              ElevatedButton(
+                                onPressed: () {
+                                  setState(() {
+                                    // Refresh the data
+                                  });
+                                },
+                                child: Text('إعادة المحاولة'),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final doctors = snapshot.data ?? [];
+                      
+                      // Filter doctors based on search query
+                      final filteredDoctors = doctors.where((doctor) {
+                        final name = doctor['name']?.toString().toLowerCase() ?? '';
+                        final specialization = doctor['specialization']?.toString().toLowerCase() ?? '';
+                        final phone = doctor['phoneNumber']?.toString().toLowerCase() ?? '';
+                        return name.contains(_searchQuery.toLowerCase()) ||
+                               specialization.contains(_searchQuery.toLowerCase()) ||
+                               phone.contains(_searchQuery.toLowerCase());
+                      }).toList();
+
+                      if (filteredDoctors.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                _searchQuery.isEmpty ? Icons.people : Icons.search_off,
+                                size: 64,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _searchQuery.isEmpty 
+                                    ? 'لا يوجد أطباء في هذا المركز'
+                                    : 'لم يتم العثور على أطباء يطابقون البحث',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              if (_searchQuery.isEmpty) ...[
+                                const SizedBox(height: 16),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    _showAddDoctorDialog(context);
+                                  },
+                                  icon: Icon(Icons.add),
+                                  label: Text('إضافة طبيب جديد'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filteredDoctors.length,
+                        itemBuilder: (context, index) {
+                          final doctorData = filteredDoctors[index];
+                          final doctorName = doctorData['name'] ?? 'طبيب غير معروف';
+                          final specialization = doctorData['specialization'] ?? 'غير محدد';
+                          final photoUrl = doctorData['photoUrl'] ?? 
+                              'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
+                          final doctorId = doctorData['doctorId'] ?? '';
+
+                          return Card(
+                            margin: EdgeInsets.only(bottom: 12),
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            const SizedBox(height: 8),
-                            ElevatedButton(
-                              onPressed: () {
-                                setState(() {
-                                  // Refresh the data
-                                });
+                            child: ListTile(
+                              contentPadding: EdgeInsets.all(16),
+                              leading: CircleAvatar(
+                                radius: 30,
+                                backgroundImage: photoUrl.startsWith('http') 
+                                    ? NetworkImage(photoUrl)
+                                    : null,
+                                backgroundColor: photoUrl.startsWith('http') 
+                                    ? null 
+                                    : Colors.grey[300],
+                                child: photoUrl.startsWith('http') 
+                                    ? null 
+                                    : Icon(
+                                        Icons.person,
+                                        size: 30,
+                                        color: Colors.grey[600],
+                                      ),
+                                onBackgroundImageError: (exception, stackTrace) {
+                                  // Handle image error
+                                },
+                              ),
+                              title: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    doctorName,
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color.fromARGB(255, 78, 17, 175).withAlpha(26),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      specialization,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: const Color.fromARGB(255, 78, 17, 175),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              trailing: Icon(
+                                Icons.arrow_forward_ios,
+                                color: Colors.grey[400],
+                                size: 20,
+                              ),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => AdminDoctorDetailsScreen(
+                                      doctorId: doctorId,
+                                      centerId: widget.centerId!,
+                                      centerName: widget.centerName,
+                                    ),
+                                  ),
+                                );
                               },
-                              child: Text('إعادة المحاولة'),
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       );
-                    }
-
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.medical_services_outlined,
-                              size: 64,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'لا يوجد أطباء حالياً',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'اضغط على "إضافة طبيب جديد" لإضافة أول طبيب',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[500],
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-
-                    final allDoctors = snapshot.data!;
-                    final filteredDoctors = filterDoctors(allDoctors);
-
-                    if (filteredDoctors.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.search_off,
-                              size: 64,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'لا توجد نتائج للبحث',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'جرب البحث بكلمات مختلفة',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[500],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-
-                                         return ListView.builder(
-                       padding: EdgeInsets.all(16),
-                       itemCount: filteredDoctors.length,
-                       itemBuilder: (context, index) {
-                         final doctorData = filteredDoctors[index];
-                         
-                         // استخراج بيانات الطبيب من قاعدة البيانات
-                         final doctorName = doctorData['docName'] ?? 'طبيب غير معروف';
-                         final specialization = doctorData['specialization'] ?? 'غير محدد';
-                         final photoUrl = doctorData['photoUrl'] ?? 
-                             'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
-                         final doctorId = doctorData['doctorId'] ?? '';
-
-                         return Card(
-                           margin: EdgeInsets.only(bottom: 12),
-                           elevation: 2,
-                           shape: RoundedRectangleBorder(
-                             borderRadius: BorderRadius.circular(12),
-                           ),
-                           child: ListTile(
-                             contentPadding: EdgeInsets.all(16),
-                             leading: CircleAvatar(
-                               radius: 30,
-                               backgroundImage: NetworkImage(photoUrl),
-                               onBackgroundImageError: (exception, stackTrace) {
-                                 // Handle image error
-                               },
-                             ),
-                             title: Column(
-                               crossAxisAlignment: CrossAxisAlignment.start,
-                               children: [
-                                 Text(
-                                   doctorName,
-                                   style: TextStyle(
-                                     fontSize: 18,
-                                     fontWeight: FontWeight.bold,
-                                     color: Colors.black87,
-                                   ),
-                                 ),
-                                 const SizedBox(height: 4),
-                                 Container(
-                                   padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                   decoration: BoxDecoration(
-                                     color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.1),
-                                     borderRadius: BorderRadius.circular(12),
-                                   ),
-                                   child: Text(
-                                     specialization,
-                                     style: TextStyle(
-                                       fontSize: 12,
-                                       color: const Color.fromARGB(255, 78, 17, 175),
-                                       fontWeight: FontWeight.w600,
-                                     ),
-                                   ),
-                                 ),
-                               ],
-                             ),
-                             trailing: Icon(
-                               Icons.arrow_forward_ios,
-                               color: Colors.grey[400],
-                               size: 20,
-                             ),
-                             onTap: () {
-                               Navigator.push(
-                                 context,
-                                 MaterialPageRoute(
-                                   builder: (context) => AdminDoctorDetailsScreen(
-                                     doctorId: doctorId,
-                                     centerId: widget.centerId!,
-                                     centerName: widget.centerName,
-                                   ),
-                                 ),
-                               );
-                             },
-                           ),
-                         );
-                       },
-                     );
-                  },
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -362,7 +377,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
       ),
     ).then((result) {
       // تحديث القائمة إذا تم إضافة طبيب جديد
-      if (result == true) {
+      if (result == true && mounted) {
         setState(() {
           // إعادة تحميل البيانات
         });

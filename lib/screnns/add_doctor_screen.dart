@@ -39,62 +39,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
   bool _isLoadingData = true;
   Set<String> _centerDoctorIds = {};
 
-  void _showSpecialtyPickerDialog() {
-    String localQuery = '';
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('اختر التخصص'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  decoration: const InputDecoration(
-                    labelText: 'بحث...',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                  onChanged: (v) => setState(() => localQuery = v),
-                ),
-                const SizedBox(height: 12),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 300),
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: _specializations
-                        .where((s) => localQuery.isEmpty || (s['name'] as String).toLowerCase().contains(localQuery.toLowerCase()))
-                        .map((s) => ListTile(
-                              title: Text(s['name'] as String),
-                              onTap: () {
-                                Navigator.of(context).pop();
-                                setState(() {
-                                  _selectedSpecialization = s['id'] as String;
-                                  _selectedDoctor = null;
-                                  _selectedDoctorPhone = '';
-                                  _selectedDoctorSpecName = '';
-                                });
-                                _updateAvailableDoctors();
-                              },
-                            ))
-                        .toList(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('إلغاء'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+
 
   void _showDoctorPickerDialog() {
     String localQuery = '';
@@ -188,7 +133,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         _isLoadingData = false;
       });
     } catch (e) {
-      print('خطأ في تحميل البيانات: $e');
+      // Error loading data
       setState(() {
         _isLoadingData = false;
       });
@@ -203,15 +148,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
     });
   }
 
-  Future<Set<String>> _loadExistingDoctorsInSpecialization() async {
-    try {
-      // للإبقاء على التوافق إن تم استدعاؤها
-      return await _collectExistingCenterDoctorIds(widget.centerId);
-    } catch (e) {
-      print('خطأ في جلب الأطباء الموجودين: $e');
-      return {};
-    }
-  }
+
 
   Future<Set<String>> _collectExistingCenterDoctorIds(String centerId) async {
     try {
@@ -235,7 +172,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
       }
       return ids;
     } catch (e) {
-      print('خطأ في جمع الأطباء الموجودين في المركز: $e');
+      // Error collecting existing center doctor IDs
       return {};
     }
   }
@@ -258,12 +195,14 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         await _uploadImage();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في اختيار الصورة: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في اختيار الصورة: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -293,23 +232,27 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         _isUploadingImage = false;
       });
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم رفع الصورة بنجاح'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم رفع الصورة بنجاح'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       setState(() {
         _isUploadingImage = false;
       });
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في رفع الصورة: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في رفع الصورة: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -433,21 +376,25 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
         },
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تم إضافة الطبيب بنجاح'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تم إضافة الطبيب بنجاح'),
+            backgroundColor: Colors.green,
+          ),
+        );
 
-      Navigator.of(context).pop(true); // إرجاع true للإشارة إلى النجاح
+        Navigator.of(context).pop(true); // إرجاع true للإشارة إلى النجاح
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('حدث خطأ في إضافة الطبيب: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ في إضافة الطبيب: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       setState(() {
         _isLoading = false;
@@ -546,7 +493,7 @@ class _AddDoctorScreenState extends State<AddDoctorScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
+                                                    color: Colors.grey.withAlpha(26),
                         spreadRadius: 1,
                         blurRadius: 10,
                         offset: Offset(0, 2),

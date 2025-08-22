@@ -73,6 +73,26 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
 
         if (doctorDoc.exists) {
           final doctorData = doctorDoc.data()!;
+          
+          // جلب معلومات الطبيب من قاعدة البيانات المركزية
+          try {
+            final centralDoctorDoc = await FirebaseFirestore.instance
+                .collection('allDoctors')
+                .doc(widget.doctorId)
+                .get();
+            
+            if (centralDoctorDoc.exists) {
+              final centralDoctorData = centralDoctorDoc.data()!;
+              doctorData['name'] = centralDoctorData['name'] ?? 'طبيب غير معروف';
+              doctorData['phoneNumber'] = centralDoctorData['phoneNumber'] ?? '';
+              doctorData['photoUrl'] = centralDoctorData['photoUrl'] ?? 
+                  'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
+            }
+          } catch (e) {
+            // إذا فشل في جلب البيانات من المركزية، استخدم المعرف
+            doctorData['name'] = widget.doctorId;
+          }
+          
           // إضافة اسم التخصص للبيانات
           final specializationData = specDoc.data();
           doctorData['specialization'] = specializationData['specName'] ?? specDoc.id;
@@ -84,7 +104,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
       
       return null;
     } catch (e) {
-      print('خطأ في تحميل تفاصيل الطبيب: $e');
+      // Error loading doctor details
       return null;
     }
   }
@@ -107,12 +127,14 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
         await _uploadImage();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('خطأ في اختيار الصورة: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في اختيار الصورة: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -124,8 +146,8 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
     });
     
     try {
-      print('بدء رفع الصورة في صفحة التفاصيل...');
-      print('مسار الملف: ${_selectedImageFile!.path}');
+      // Starting image upload in details page
+      // File path: ${_selectedImageFile!.path}
       
       // التحقق من وجود الملف
       if (!await _selectedImageFile!.exists()) {
@@ -134,11 +156,11 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
       
       // إنشاء اسم فريد للصورة
       final fileName = 'doctors/${DateTime.now().millisecondsSinceEpoch}_${path.basename(_selectedImageFile!.path)}';
-      print('اسم الملف في Storage: $fileName');
+      // File name in Storage: $fileName
       
       // رفع الصورة إلى Firebase Storage
       final storageRef = FirebaseStorage.instance.ref().child(fileName);
-      print('مرجع Storage: ${storageRef.fullPath}');
+      // Storage reference: ${storageRef.fullPath}
       
       // إضافة metadata للصورة
       final metadata = SettableMetadata(
@@ -154,16 +176,16 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
       // مراقبة تقدم الرفع
       uploadTask.snapshotEvents.listen((snapshot) {
         final progress = snapshot.bytesTransferred / snapshot.totalBytes;
-        print('تقدم الرفع: ${(progress * 100).toStringAsFixed(1)}%');
+        // Upload progress: ${(progress * 100).toStringAsFixed(1)}%
       });
       
       // انتظار اكتمال الرفع
       final snapshot = await uploadTask;
-      print('تم رفع الصورة بنجاح');
+      // Image uploaded successfully
       
       // الحصول على رابط التحميل
       final downloadUrl = await snapshot.ref.getDownloadURL();
-      print('رابط التحميل: $downloadUrl');
+      // Download URL: $downloadUrl
       
       // تحديث رابط الصورة في قاعدة البيانات
       await _updateDoctorPhoto(downloadUrl);
@@ -173,15 +195,17 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
         _isUploadingImage = false;
       });
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم رفع الصورة بنجاح'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم رفع الصورة بنجاح'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
-      print('خطأ في رفع الصورة: $e');
-      print('نوع الخطأ: ${e.runtimeType}');
+      // Error uploading image: $e
+      // Error type: ${e.runtimeType}
       
       setState(() {
         _isUploadingImage = false;
@@ -199,19 +223,29 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
         errorMessage = 'خطأ في الملف - تأكد من صحة الصورة';
       }
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$errorMessage\n$e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$errorMessage\n$e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     }
   }
 
   Future<void> _updateDoctorPhoto(String photoUrl) async {
     try {
-      // البحث عن الطبيب في جميع التخصصات
+      // تحديث الصورة في قاعدة البيانات المركزية
+      await FirebaseFirestore.instance
+          .collection('allDoctors')
+          .doc(widget.doctorId)
+          .update({
+        'photoUrl': photoUrl,
+      });
+      
+      // تحديث الصورة في قاعدة البيانات المحلية أيضاً
       final specializationsSnapshot = await FirebaseFirestore.instance
           .collection('medicalFacilities')
           .doc(widget.centerId)
@@ -244,7 +278,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
         }
       }
     } catch (e) {
-      print('Error updating doctor photo: $e');
+      // Error updating doctor photo: $e
     }
   }
 
@@ -421,7 +455,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
                 final data = doc.data();
                 final dateStr = data['date'] as String;
                 final period = data['period'] as String;
-                final blockedAt = data['blockedAt'] as Timestamp?;
+
                 
                 final periodText = period == 'all' ? 'اليوم كاملاً' : 
                                   (period == 'morning' ? 'صباحاً' : 'مساءً');
@@ -723,13 +757,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
     _showImageSourceDialog();
   }
 
-  void _pickImageFromCamera() {
-    _pickImage(ImageSource.camera);
-  }
 
-  void _pickImageFromGallery() {
-    _pickImage(ImageSource.gallery);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -853,7 +881,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.grey.withOpacity(0.1),
+                          color: Colors.grey.withAlpha(26),
                           spreadRadius: 1,
                           blurRadius: 10,
                           offset: Offset(0, 2),
@@ -878,7 +906,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
                               Positioned.fill(
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.5),
+                                    color: Colors.black.withAlpha(128),
                                     shape: BoxShape.circle,
                                   ),
                                   child: const Center(
@@ -946,7 +974,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
                         Container(
                           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                            color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.1),
+                            color: const Color.fromARGB(255, 78, 17, 175).withAlpha(26),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
@@ -1152,7 +1180,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withAlpha(26),
             spreadRadius: 1,
             blurRadius: 10,
             offset: Offset(0, 2),
@@ -1186,7 +1214,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.1),
+              color: const Color.fromARGB(255, 78, 17, 175).withAlpha(26),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -1234,7 +1262,7 @@ class _AdminDoctorDetailsScreenState extends State<AdminDoctorDetailsScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.1),
+              color: const Color.fromARGB(255, 78, 17, 175).withAlpha(26),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(

@@ -1,49 +1,36 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:hospital_app/widgets/optimized_loading_widget.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AdminUsersScreen extends StatefulWidget {
-  final String centerId;
-  final String? centerName;
-
-  const AdminUsersScreen({
-    super.key,
-    required this.centerId,
-    this.centerName,
-  });
+  const AdminUsersScreen({super.key});
 
   @override
   State<AdminUsersScreen> createState() => _AdminUsersScreenState();
 }
 
 class _AdminUsersScreenState extends State<AdminUsersScreen> {
-  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
-  // Controllers for add user form
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   Future<List<Map<String, dynamic>>> fetchUsers() async {
     try {
-      final usersSnapshot = await FirebaseFirestore.instance
-          .collection('medicalFacilities')
-          .doc(widget.centerId)
+      final snapshot = await FirebaseFirestore.instance
           .collection('users')
-          .get()
-          .timeout(const Duration(seconds: 8));
+          .get();
 
-      List<Map<String, dynamic>> users = [];
-      for (var doc in usersSnapshot.docs) {
-        final userData = doc.data();
-        userData['userId'] = doc.id;
-        users.add(userData);
-      }
-      return users;
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['userId'] = doc.id;
+        return data;
+      }).toList();
     } catch (e) {
-      print('خطأ في تحميل المستخدمين: $e');
+      print('Error fetching users: $e');
       return [];
     }
   }
@@ -52,88 +39,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     if (_searchQuery.isEmpty) return users;
     
     return users.where((user) {
-      final name = user['name']?.toString().toLowerCase() ?? '';
-      final phone = user['phone']?.toString().toLowerCase() ?? '';
+      final userName = user['userName']?.toString().toLowerCase() ?? '';
+      final userPhone = user['userPhone']?.toString().toLowerCase() ?? '';
       
-      return name.contains(_searchQuery.toLowerCase()) ||
-             phone.contains(_searchQuery.toLowerCase());
+      return userName.contains(_searchQuery.toLowerCase()) ||
+             userPhone.contains(_searchQuery.toLowerCase());
     }).toList();
-  }
-
-  Future<void> addUser() async {
-    // Validate form
-    if (_nameController.text.isEmpty) {
-      _showErrorDialog('يرجى إدخال اسم المستخدم');
-      return;
-    }
-    
-    if (_phoneController.text.isEmpty) {
-      _showErrorDialog('يرجى إدخال رقم الهاتف');
-      return;
-    }
-    
-    if (_passwordController.text.isEmpty) {
-      _showErrorDialog('يرجى إدخال كلمة المرور');
-      return;
-    }
-    
-    if (_passwordController.text != _confirmPasswordController.text) {
-      _showErrorDialog('كلمة المرور غير متطابقة');
-      return;
-    }
-    
-    if (_passwordController.text.length < 6) {
-      _showErrorDialog('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
-      return;
-    }
-
-    try {
-      // Check if user already exists
-      final existingUsers = await FirebaseFirestore.instance
-          .collection('medicalFacilities')
-          .doc(widget.centerId)
-          .collection('users')
-          .where('phone', isEqualTo: _phoneController.text)
-          .get()
-          .timeout(const Duration(seconds: 8));
-
-      if (existingUsers.docs.isNotEmpty) {
-        _showErrorDialog('رقم الهاتف مسجل مسبقاً');
-        return;
-      }
-
-      // Add user to database
-      await FirebaseFirestore.instance
-          .collection('medicalFacilities')
-          .doc(widget.centerId)
-          .collection('users')
-          .add({
-        'name': _nameController.text,
-        'phone': _phoneController.text,
-        'password': _passwordController.text,
-        'createdAt': FieldValue.serverTimestamp(),
-        'isActive': true,
-      });
-
-      // Clear form
-      _nameController.clear();
-      _phoneController.clear();
-      _passwordController.clear();
-      _confirmPasswordController.clear();
-
-      // Close dialog and refresh
-      Navigator.of(context).pop();
-      setState(() {});
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم إضافة المستخدم بنجاح'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      _showErrorDialog('حدث خطأ أثناء إضافة المستخدم');
-    }
   }
 
   Future<void> deleteUser(String userId, String userName) async {
@@ -144,12 +55,16 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         content: Text('هل أنت متأكد من حذف المستخدم "$userName"؟'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('إلغاء'),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('حذف', style: TextStyle(color: Colors.red)),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('حذف'),
           ),
         ],
       ),
@@ -158,95 +73,118 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     if (confirmed == true) {
       try {
         await FirebaseFirestore.instance
-            .collection('medicalFacilities')
-            .doc(widget.centerId)
             .collection('users')
             .doc(userId)
             .delete();
 
-        setState(() {});
-        
+        if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم حذف المستخدم بنجاح'),
+            SnackBar(
+              content: Text('تم حذف المستخدم "$userName" بنجاح'),
             backgroundColor: Colors.green,
           ),
         );
+          setState(() {
+            // Refresh the list
+          });
+        }
       } catch (e) {
-        _showErrorDialog('حدث خطأ أثناء حذف المستخدم');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('خطأ في حذف المستخدم: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
 
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('خطأ'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('حسناً'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showAddUserDialog() {
+    final userNameController = TextEditingController();
+    final userPhoneController = TextEditingController();
+    final userPasswordController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('إضافة مستخدم جديد'),
-        content: SingleChildScrollView(
-          child: Column(
+        content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
-                controller: _nameController,
+              controller: userNameController,
                 decoration: const InputDecoration(
                   labelText: 'اسم المستخدم',
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 16),
+            const SizedBox(height: 12),
               TextField(
-                controller: _phoneController,
+              controller: userPhoneController,
                 decoration: const InputDecoration(
                   labelText: 'رقم الهاتف',
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.phone,
               ),
-              const SizedBox(height: 16),
+            const SizedBox(height: 12),
               TextField(
-                controller: _passwordController,
+              controller: userPasswordController,
+              obscureText: true,
                 decoration: const InputDecoration(
                   labelText: 'كلمة المرور',
                   border: OutlineInputBorder(),
                 ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _confirmPasswordController,
-                decoration: const InputDecoration(
-                  labelText: 'تأكيد كلمة المرور',
-                  border: OutlineInputBorder(),
-                ),
-                obscureText: true,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.pop(context),
             child: const Text('إلغاء'),
           ),
           ElevatedButton(
-            onPressed: addUser,
+            onPressed: () async {
+              if (userNameController.text.trim().isNotEmpty &&
+                  userPhoneController.text.trim().isNotEmpty &&
+                  userPasswordController.text.trim().isNotEmpty) {
+                Navigator.pop(context);
+                
+                try {
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .add({
+                    'userName': userNameController.text.trim(),
+                    'userPhone': userPhoneController.text.trim(),
+                    'userPassword': userPasswordController.text.trim(),
+                    'createdAt': FieldValue.serverTimestamp(),
+                  });
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('تم إضافة المستخدم "${userNameController.text.trim()}" بنجاح'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                    setState(() {
+                      // Refresh the list
+                    });
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('خطأ في إضافة المستخدم: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              }
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color.fromARGB(255, 78, 17, 175),
               foregroundColor: Colors.white,
@@ -264,9 +202,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            widget.centerName != null ? 'المستخدمين - ${widget.centerName}' : 'المستخدمين',
-            style: const TextStyle(
+          title: const Text(
+            'إدارة المستخدمين',
+            style: TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
@@ -283,7 +221,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             ),
           ],
         ),
-        body: Column(
+        body: SafeArea(
+          child: Column(
           children: [
             // Search and add user section
             Container(
@@ -337,9 +276,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 future: fetchUsers(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const OptimizedLoadingWidget(
-                      message: 'جاري تحميل المستخدمين...',
-                      color: Color.fromARGB(255, 78, 17, 175),
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: Color.fromARGB(255, 78, 17, 175),
+                      ),
                     );
                   }
 
@@ -382,8 +322,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                           const SizedBox(height: 16),
                           Text(
                             _searchQuery.isEmpty 
-                                ? 'لا يوجد مستخدمين حالياً'
-                                : 'لم يتم العثور على مستخدمين تطابق البحث',
+                                  ? 'لا يوجد مستخدمين'
+                                  : 'لم يتم العثور على مستخدمين يطابقون البحث',
                             style: TextStyle(
                               fontSize: 18,
                               color: Colors.grey[600],
@@ -399,20 +339,15 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     itemCount: filteredUsers.length,
                     itemBuilder: (context, index) {
                       final user = filteredUsers[index];
-                      final userName = user['name'] ?? 'غير محدد';
-                      final userPhone = user['phone'] ?? 'غير محدد';
-                                             // final isActive = user['isActive'] ?? true;
-                       // final createdAt = user['createdAt'] as Timestamp?;
+                        final userName = user['userName'] ?? 'مستخدم غير معروف';
+                        final userPhone = user['userPhone'] ?? 'غير محدد';
 
                                              return Container(
                          margin: const EdgeInsets.only(bottom: 12),
                          decoration: BoxDecoration(
                            color: Colors.white,
                            borderRadius: BorderRadius.circular(12),
-                           border: Border.all(
-                             color: Colors.grey[200]!,
-                             width: 1,
-                           ),
+                            border: Border.all(color: Colors.grey[300]!),
                            boxShadow: [
                              BoxShadow(
                                color: Colors.grey.withOpacity(0.08),
@@ -502,13 +437,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
   }
-
-  // String _formatDate(Timestamp timestamp) {
-  //   final date = timestamp.toDate();
-  //   return '${date.day}/${date.month}/${date.year}';
-  // }
 }

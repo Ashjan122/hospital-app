@@ -75,7 +75,19 @@ class _AboutScreenState extends State<AboutScreen> {
       if (comparison < 0) {
         // يوجد تحديث
         final ok = await AppUpdateService.openUpdateUrl(_updateUrl!);
-        if (!ok && mounted) {
+        if (ok && mounted) {
+          // تحديث رقم الإصدار المحلي بعد فتح رابط التحديث
+          setState(() {
+            _currentVersion = _firebaseVersion;
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('تم فتح رابط التحديث. الإصدار الجديد: $_firebaseVersion'),
+              backgroundColor: Colors.blue,
+            ),
+          );
+        } else if (!ok && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('لا يمكن فتح رابط التحديث')),
           );
@@ -83,7 +95,10 @@ class _AboutScreenState extends State<AboutScreen> {
       } else {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('التطبيق محدث لآخر نسخة')),
+          const SnackBar(
+            content: Text('التطبيق محدث'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
@@ -110,142 +125,160 @@ class _AboutScreenState extends State<AboutScreen> {
           foregroundColor: Colors.white,
           elevation: 0,
         ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header: Logo placeholder + App name + brief
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.12),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          )
-                        ],
-                        border: Border.all(color: Colors.grey[200]!),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(12),
+        body: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header: Logo placeholder + App name + brief
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.12),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            )
+                          ],
+                          border: Border.all(color: Colors.grey[200]!),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text('قريباً', style: TextStyle(color: Color.fromARGB(255, 78, 17, 175), fontWeight: FontWeight.bold)),
                             ),
-                            alignment: Alignment.center,
-                            child: const Text('قريباً', style: TextStyle(color: Color.fromARGB(255, 78, 17, 175), fontWeight: FontWeight.bold)),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: const [
-                                Text('جودة', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                                SizedBox(height: 6),
-                                Text(
-                                  'هو تطبيق لحجز المواعيد الطبية بسهولة من اي مكان حيث يمكنك اختيار المستشفى او المركز والطبيب المناسب لك بكل سهولة .',
-                                  style: TextStyle(color: Colors.black87, height: 1.4),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Features (expandable)
-                    ExpandableSection(
-                      title: 'المميزات الرئيسية',
-                      child: const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _Bullet(text: 'اختيار المستشفى او المركز الطبي'),
-                          _Bullet(text: 'عرض شركات التأمين'),
-                          _Bullet(text: 'تحديد التخصص الطبي'),
-                          _Bullet(text: 'عرض الاطباء ومواعيدهم'),
-                          _Bullet(text: 'الحجز المباشر'),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Version (expandable)
-                    ExpandableSection(
-                      title: 'معلومات الإصدار',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('رقم الإصدار: $_currentVersion', style: TextStyle(color: Colors.grey[700])),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: _handleCheckAndUpdate,
-                              icon: const Icon(Icons.system_update),
-                              label: const Text('فحص الإصدار والتحديث'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color.fromARGB(255, 78, 17, 175),
-                                foregroundColor: Colors.white,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text('جودة', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                  SizedBox(height: 6),
+                                  Text(
+                                    'هو تطبيق لحجز المواعيد الطبية بسهولة من اي مكان حيث يمكنك اختيار المستشفى او المركز والطبيب المناسب لك بكل سهولة .',
+                                    style: TextStyle(color: Colors.black87, height: 1.4),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    // Developer (expandable)
-                    const ExpandableSection(
-                      title: 'عن المطور',
-                      child: Text('تم تطويره من قبل نجوم الانتاج', style: TextStyle(color: Colors.black87)),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Support (expandable)
-                    const ExpandableSection(
-                      title: 'الدعم الفني ووسائل التواصل',
-                      child: Text('قريباً', style: TextStyle(color: Colors.blueGrey)),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Policies (each expandable)
-                    ExpandableSection(
-                      title: 'سياسة الخصوصية',
-                      child: Text(
-                        'نحترم خصوصيتك. يتم استخدام بياناتك فقط لأغراض تقديم الخدمة وتحسين التجربة. لا نشارك بياناتك مع أطراف ثالثة إلا وفق القوانين أو بموافقتك.',
-                        style: TextStyle(color: Colors.grey[700], height: 1.5),
+                      // Features (expandable)
+                      ExpandableSection(
+                        title: 'المميزات الرئيسية',
+                        child: const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _Bullet(text: 'اختيار المستشفى او المركز الطبي'),
+                            _Bullet(text: 'عرض شركات التأمين'),
+                            _Bullet(text: 'تحديد التخصص الطبي'),
+                            _Bullet(text: 'عرض الاطباء ومواعيدهم'),
+                            _Bullet(text: 'الحجز المباشر'),
+                          ],
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    ExpandableSection(
-                      title: 'الشروط والأحكام',
-                      child: Text(
-                        'باستخدامك للتطبيق فإنك توافق على الشروط والأحكام الخاصة باستخدام الخدمة، وتشمل الالتزام بالمواعيد وعدم إساءة الاستخدام والمحافظة على سرية بيانات دخولك.',
-                        style: TextStyle(color: Colors.grey[700], height: 1.5),
+                      // Version (expandable)
+                      ExpandableSection(
+                        title: 'معلومات الإصدار',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('رقم الإصدار: $_currentVersion', style: TextStyle(color: Colors.grey[700])),
+                            if (hasFirebaseVersion && _firebaseVersion != _currentVersion) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'الإصدار الجديد المتاح: $_firebaseVersion',
+                                style: TextStyle(
+                                  color: Colors.green[700],
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: _handleCheckAndUpdate,
+                                icon: const Icon(Icons.system_update),
+                                label: Text(
+                                  hasFirebaseVersion && _firebaseVersion != _currentVersion
+                                      ? 'تحديث التطبيق'
+                                      : 'فحص الإصدار والتحديث'
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: hasFirebaseVersion && _firebaseVersion != _currentVersion
+                                      ? Colors.green
+                                      : const Color.fromARGB(255, 78, 17, 175),
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+
+                      const SizedBox(height: 16),
+
+                      // Developer (expandable)
+                      const ExpandableSection(
+                        title: 'عن المطور',
+                        child: Text('تم تطويره من قبل نجوم الانتاج', style: TextStyle(color: Colors.black87)),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Support (expandable)
+                      const ExpandableSection(
+                        title: 'الدعم الفني ووسائل التواصل',
+                        child: Text('قريباً', style: TextStyle(color: Colors.blueGrey)),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Policies (each expandable)
+                      ExpandableSection(
+                        title: 'سياسة الخصوصية',
+                        child: Text(
+                          'نحترم خصوصيتك. يتم استخدام بياناتك فقط لأغراض تقديم الخدمة وتحسين التجربة. لا نشارك بياناتك مع أطراف ثالثة إلا وفق القوانين أو بموافقتك.',
+                          style: TextStyle(color: Colors.grey[700], height: 1.5),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      ExpandableSection(
+                        title: 'الشروط والأحكام',
+                        child: Text(
+                          'باستخدامك للتطبيق فإنك توافق على الشروط والأحكام الخاصة باستخدام الخدمة، وتشمل الالتزام بالمواعيد وعدم إساءة الاستخدام والمحافظة على سرية بيانات دخولك.',
+                          style: TextStyle(color: Colors.grey[700], height: 1.5),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+        ),
       ),
     );
   }

@@ -9,8 +9,8 @@ class CentralInsuranceScreen extends StatefulWidget {
 }
 
 class _CentralInsuranceScreenState extends State<CentralInsuranceScreen> {
-  bool _isLoading = false;
   String _searchQuery = '';
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +19,7 @@ class _CentralInsuranceScreenState extends State<CentralInsuranceScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text(
-            'إدارة شركات التأمين المركزية',
+            'إدارة شركات التأمين',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.white,
@@ -29,144 +29,165 @@ class _CentralInsuranceScreenState extends State<CentralInsuranceScreen> {
           foregroundColor: Colors.white,
           elevation: 0,
         ),
-        body: Column(
-          children: [
-            // Search bar
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.grey[50],
-              child: TextField(
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value;
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'البحث في شركات التأمين...',
-                  prefixIcon: const Icon(Icons.search),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Search bar
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.grey[50],
+                child: TextField(
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'البحث في شركات التأمين...',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
                   ),
-                  filled: true,
-                  fillColor: Colors.white,
                 ),
               ),
-            ),
-            // Insurance companies list
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('insuranceCompanies')
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error, color: Colors.red, size: 64),
-                          const SizedBox(height: 16),
-                          Text('خطأ في الاتصال: ${snapshot.error}'),
-                        ],
-                      ),
-                    );
-                  }
-
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  final companies = snapshot.data?.docs ?? [];
-                  
-                  // Filter companies based on search query
-                  final filteredCompanies = companies.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final name = data['name']?.toString().toLowerCase() ?? '';
-                    final description = data['description']?.toString().toLowerCase() ?? '';
-                    final phone = data['phone']?.toString().toLowerCase() ?? '';
-                    return name.contains(_searchQuery.toLowerCase()) ||
-                           description.contains(_searchQuery.toLowerCase()) ||
-                           phone.contains(_searchQuery.toLowerCase());
-                  }).toList();
-
-                  if (filteredCompanies.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _searchQuery.isEmpty ? Icons.business : Icons.search_off,
-                            size: 64,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _searchQuery.isEmpty 
-                                ? 'لا توجد شركات تأمين'
-                                : 'لم يتم العثور على شركات تأمين تطابق البحث',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: filteredCompanies.length,
-                    itemBuilder: (context, index) {
-                      final doc = filteredCompanies[index];
-                      final data = doc.data() as Map<String, dynamic>;
-                      final name = data['name'] ?? 'شركة غير معروفة';
-                      final description = data['description'] ?? '';
-                      final phone = data['phone'] ?? '';
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          leading: Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                            child: const Icon(
-                              Icons.business,
-                              color: Color.fromARGB(255, 78, 17, 175),
-                            ),
-                          ),
-                          title: Text(
-                            name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (description.isNotEmpty)
-                                Text(description),
-                              if (phone.isNotEmpty)
-                                Text('الهاتف: $phone'),
-                            ],
-                          ),
-                                                     trailing: IconButton(
-                             onPressed: () => _showEditInsuranceDialog(doc.id, name, description, phone),
-                             icon: const Icon(Icons.edit, color: Colors.blue),
-                             tooltip: 'تعديل',
-                           ),
+              // Insurance companies list
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('insuranceCompanies')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error, color: Colors.red, size: 64),
+                            const SizedBox(height: 16),
+                            Text('خطأ في الاتصال: ${snapshot.error}'),
+                          ],
                         ),
                       );
-                    },
-                  );
-                },
+                    }
+
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final companies = snapshot.data?.docs ?? [];
+                    
+                    // Filter companies based on search query
+                    final filteredCompanies = companies.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final name = data['name']?.toString().toLowerCase() ?? '';
+                      final description = data['description']?.toString().toLowerCase() ?? '';
+                      final phone = data['phone']?.toString().toLowerCase() ?? '';
+                      return name.contains(_searchQuery.toLowerCase()) ||
+                             description.contains(_searchQuery.toLowerCase()) ||
+                             phone.contains(_searchQuery.toLowerCase());
+                    }).toList();
+
+                    if (filteredCompanies.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _searchQuery.isEmpty ? Icons.business : Icons.search_off,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _searchQuery.isEmpty 
+                                  ? 'لا توجد شركات تأمين'
+                                  : 'لم يتم العثور على شركات تأمين تطابق البحث',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: filteredCompanies.length,
+                      itemBuilder: (context, index) {
+                        final doc = filteredCompanies[index];
+                        final data = doc.data() as Map<String, dynamic>;
+                        final name = data['name'] ?? 'شركة غير معروفة';
+                        final description = data['description'] ?? '';
+                        final phone = data['phone'] ?? '';
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.all(16),
+                            leading: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(
+                                Icons.business,
+                                color: Color.fromARGB(255, 78, 17, 175),
+                              ),
+                            ),
+                            title: Text(
+                              name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (description.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(description),
+                                ],
+                                if (phone.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.phone, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(phone),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () => _showEditInsuranceDialog(
+                                doc.id,
+                                name,
+                                description,
+                                phone,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: () => _showAddInsuranceDialog(),
@@ -330,8 +351,6 @@ class _CentralInsuranceScreenState extends State<CentralInsuranceScreen> {
     );
   }
 
-
-
   Future<void> _addInsuranceCompany(String name, String description, String phone) async {
     setState(() {
       _isLoading = true;
@@ -412,6 +431,4 @@ class _CentralInsuranceScreenState extends State<CentralInsuranceScreen> {
       });
     }
   }
-
-
 }

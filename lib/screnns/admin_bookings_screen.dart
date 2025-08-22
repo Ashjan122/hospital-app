@@ -1,8 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:hospital_app/services/sms_service.dart';
 import 'package:hospital_app/widgets/optimized_loading_widget.dart';
@@ -77,7 +75,7 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
         _isLoadingMore = false;
       });
     } catch (e) {
-      print('خطأ في تحميل الحجوزات: $e');
+      // Error loading bookings
       setState(() {
         _allBookings = [];
         _currentPage = 0;
@@ -109,7 +107,7 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
       
       await Future.wait(doctorFutures);
     } catch (e) {
-      print('خطأ في تحميل الحجوزات من التخصص ${specDoc.id}: $e');
+      // Error loading bookings from specialization
     }
   }
 
@@ -145,9 +143,9 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
         appointmentData['appointmentId'] = appointmentDoc.id;
         allBookings.add(appointmentData);
       }
-    } catch (e) {
-      print('خطأ في تحميل الحجوزات من الطبيب ${doctorDoc.id}: $e');
-    }
+          } catch (e) {
+        // Error loading bookings from doctor
+      }
   }
 
   // دالة جلب الحجوزات على دفعات (10 حجوزات في كل مرة)
@@ -196,7 +194,7 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
     });
     
     final filteredBookings = filterBookings();
-    print('تم تحميل الصفحة $_currentPage، الحجوزات المعروضة: ${getPaginatedBookings().length} من ${filteredBookings.length}');
+          // Loaded page $_currentPage, displayed bookings: ${getPaginatedBookings().length} of ${filteredBookings.length}
   }
 
   List<Map<String, dynamic>> filterBookings() {
@@ -393,30 +391,34 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
           _confirmingBookings.remove(appointmentId);
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم تأكيد الحجز وإرسال رسالة للمريض'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تم تأكيد الحجز وإرسال رسالة للمريض'),
+              backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
       } catch (e) {
         setState(() {
           _confirmingBookings.remove(appointmentId);
         });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('خطأ في تأكيد الحجز: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('خطأ في تأكيد الحجز: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
 
   Widget _buildBookingsList() {
     final filteredBookings = filterBookings();
-    print('DEBUG: إجمالي الحجوزات: ${filteredBookings.length}، الصفحة: $_currentPage، hasMoreData: $_hasMoreData');
+          // DEBUG: Total bookings: ${filteredBookings.length}, page: $_currentPage, hasMoreData: $_hasMoreData
 
                                     if (filteredBookings.isEmpty) {
                     return Center(
@@ -445,7 +447,7 @@ class _AdminBookingsScreenState extends State<AdminBookingsScreen> {
 
     final paginatedBookings = getPaginatedBookings();
     
-    print('DEBUG: إجمالي الحجوزات: ${filteredBookings.length}، المعروضة: ${paginatedBookings.length}، الصفحة: $_currentPage، hasMoreData: $_hasMoreData');
+          // DEBUG: Total bookings: ${filteredBookings.length}, displayed: ${paginatedBookings.length}, page: $_currentPage, hasMoreData: $_hasMoreData
 
                   return ListView.builder(
                     padding: const EdgeInsets.all(16),

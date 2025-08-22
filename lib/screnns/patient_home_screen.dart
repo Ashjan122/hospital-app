@@ -74,92 +74,94 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             ),
           ],
         ),
-        body: Container(
-          color: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                // Welcome message
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.1),
-                        spreadRadius: 2,
-                        blurRadius: 15,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        "مرحباً بك",
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: const Color.fromARGB(255, 78, 17, 175),
+        body: SafeArea(
+          child: Container(
+            color: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  // Welcome message
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.1),
+                          spreadRadius: 2,
+                          blurRadius: 15,
+                          offset: const Offset(0, 4),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        patientName ?? 'مريض عزيز',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          "مرحباً بك",
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: const Color.fromARGB(255, 78, 17, 175),
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          patientName ?? 'مريض عزيز',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
+                  const SizedBox(height: 24),
 
-                // Cards section
-                Expanded(
-                  child: Column(
-                    children: [
-                      // My Bookings Card
-                      _buildCard(
-                        title: "حجوزاتي",
-                        subtitle: "عرض وإدارة حجوزاتك",
-                        icon: Icons.calendar_today,
-                        color: const Color.fromARGB(255, 78, 17, 175),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const PatientBookingsScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // Medical Facilities Card
-                      _buildCard(
-                        title: "المرافق الطبية",
-                        subtitle: "استكشف المرافق والحجز",
-                        icon: Icons.medication,
-                        color: Colors.green,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const HospitalScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                  // Cards section
+                  Expanded(
+                    child: Column(
+                      children: [
+                        // My Bookings Card
+                        _buildCard(
+                          title: "حجوزاتي",
+                          subtitle: "عرض وإدارة حجوزاتك",
+                          icon: Icons.calendar_today,
+                          color: const Color.fromARGB(255, 78, 17, 175),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const PatientBookingsScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // Medical Facilities Card
+                        _buildCard(
+                          title: "المرافق الطبية",
+                          subtitle: "استكشف المرافق والحجز",
+                          icon: Icons.medication,
+                          color: Colors.green,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const HospitalScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
