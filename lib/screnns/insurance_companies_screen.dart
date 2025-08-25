@@ -29,13 +29,13 @@ class _InsuranceCompaniesScreenState extends State<InsuranceCompaniesScreen> {
             onPressed: () {
               Navigator.pop(context);
             },
-            icon: Icon(Icons.arrow_back, color: Color.fromARGB(255, 78, 17, 175)),
+            icon: Icon(Icons.arrow_back, color: Color(0xFF2FBDAF)),
           ),
           title: Text(
             "شركات التأمين",
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 78, 17, 175),
+              color: const Color(0xFF2FBDAF),
               fontSize: 24,
             ),
           ),
@@ -125,7 +125,7 @@ class _InsuranceCompaniesScreenState extends State<InsuranceCompaniesScreen> {
                         ],
                         border: Border.all(
                           color: isActive 
-                              ? const Color.fromARGB(255, 78, 17, 175).withOpacity(0.3)
+                              ? const Color(0xFF2FBDAF).withOpacity(0.3)
                               : Colors.grey.withOpacity(0.3),
                           width: 1,
                         ),
@@ -141,14 +141,14 @@ class _InsuranceCompaniesScreenState extends State<InsuranceCompaniesScreen> {
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
                                     color: isActive 
-                                        ? const Color.fromARGB(255, 78, 17, 175).withOpacity(0.1)
+                                        ? const Color(0xFF2FBDAF).withOpacity(0.1)
                                         : Colors.grey.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Icon(
                                     Icons.security,
                                     size: 14,
-                                    color: isActive ? const Color.fromARGB(255, 78, 17, 175) : Colors.grey,
+                                    color: isActive ? const Color(0xFF2FBDAF) : Colors.grey,
                                   ),
                                 ),
                                 const SizedBox(width: 12),

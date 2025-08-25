@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:hospital_app/screnns/dashboard_screen.dart';
 import 'package:hospital_app/screnns/patient_home_screen.dart';
 import 'package:hospital_app/screnns/register_screen.dart';
-import 'package:hospital_app/screnns/control_panel_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:ui' as ui;
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -38,56 +37,23 @@ class _LoginScreenState extends State<LoginScreen> {
     final prefs = await SharedPreferences.getInstance();
     final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     final userType = prefs.getString('userType');
-    final centerId = prefs.getString('centerId');
-    final centerName = prefs.getString('centerName');
     final userEmail = prefs.getString('userEmail');
 
-    if (isLoggedIn) {
-      if (userType == 'control') {
-        // Control user is logged in
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const ControlPanelScreen(),
-          ),
-        );
-      } else if (userType == 'admin' && centerId != null && centerName != null) {
-        // Admin is logged in
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => DashboardScreen(
-              centerId: centerId,
-              centerName: centerName,
-            ),
-          ),
-        );
-      } else if (userType == 'patient' && userEmail != null) {
+    if (isLoggedIn && userType == 'patient' && userEmail != null) {
         // Patient is logged in
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) => const PatientHomeScreen(),
           ),
         );
-      } else if (userType == 'user' && centerId != null && centerName != null) {
-        // Internal user is logged in
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => DashboardScreen(
-              centerId: centerId,
-              centerName: centerName,
-            ),
-          ),
-        );
-      }
     }
   }
 
-  Future<void> _saveLoginData(String userType, {String? centerId, String? centerName, String? userEmail, String? userName, String? userId}) async {
+  Future<void> _saveLoginData(String userType, {String? userEmail, String? userName, String? userId}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLoggedIn', true);
     await prefs.setString('userType', userType);
     
-    if (centerId != null) await prefs.setString('centerId', centerId);
-    if (centerName != null) await prefs.setString('centerName', centerName);
     if (userEmail != null) await prefs.setString('userEmail', userEmail);
     if (userName != null) await prefs.setString('userName', userName);
     if (userId != null) await prefs.setString('userId', userId);
@@ -120,84 +86,6 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
       try {
-        // Check if control credentials (super admin)
-        if (_usernameController.text.trim().toLowerCase() == 'كنترول' && _passwordController.text == '11223344') {
-          // Control login - redirect to control panel
-          await _saveLoginData('control');
-          
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-            });
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => const ControlPanelScreen(),
-              ),
-            );
-          }
-          return;
-        }
-        
-        // Check if admin credentials (center ID or name)
-        if (_passwordController.text == '12345678') {
-          // Check if username is a center ID or name
-          final centerQuery = await FirebaseFirestore.instance
-              .collection('medicalFacilities')
-              .where('available', isEqualTo: true)
-              .get();
-
-          bool isAdminLogin = false;
-          String centerId = '';
-          String centerName = '';
-
-          for (var doc in centerQuery.docs) {
-            final centerData = doc.data();
-            final centerDocId = doc.id;
-            final centerDocName = centerData['name'] ?? '';
-
-            // Check if username matches center ID or name (case insensitive)
-            if (_usernameController.text.trim() == centerDocId || 
-                _usernameController.text.trim().toLowerCase() == centerDocName.toLowerCase() ||
-                _usernameController.text.trim().toLowerCase().contains(centerDocName.toLowerCase()) ||
-                centerDocName.toLowerCase().contains(_usernameController.text.trim().toLowerCase())) {
-              isAdminLogin = true;
-              centerId = centerDocId;
-              centerName = centerDocName;
-              break;
-            }
-          }
-
-          if (isAdminLogin) {
-            // Save admin login data
-            await _saveLoginData('admin', centerId: centerId, centerName: centerName);
-            
-            // Admin login - redirect to dashboard with center info
-            if (mounted) {
-              setState(() {
-                _isLoading = false;
-              });
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => DashboardScreen(
-                    centerId: centerId,
-                    centerName: centerName,
-                  ),
-                ),
-              );
-            }
-          } else {
-            // Not a valid center, show error
-            setState(() {
-              _isLoading = false;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('اسم المركز غير موجود أو غير مفعل'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        } else {
           // Check if input looks like a phone number
           bool isPhoneNumber = RegExp(r'^[0-9+\-\s()]+$').hasMatch(_usernameController.text.trim());
           
@@ -285,90 +173,13 @@ class _LoginScreenState extends State<LoginScreen> {
               );
             }
           } else {
-            // Check if it's a user login by name
-            // Search for user in all medical facilities
-            final centersQuery = await FirebaseFirestore.instance
-                .collection('medicalFacilities')
-                .where('available', isEqualTo: true)
-                .get();
-
-            bool userFound = false;
-            String centerId = '';
-            String centerName = '';
-
-            for (var centerDoc in centersQuery.docs) {
-              final usersQuery = await FirebaseFirestore.instance
-                  .collection('medicalFacilities')
-                  .doc(centerDoc.id)
-                  .collection('users')
-                  .where('name', isEqualTo: _usernameController.text.trim())
-                  .where('isActive', isEqualTo: true)
-                  .get();
-
-              if (usersQuery.docs.isNotEmpty) {
-                final userData = usersQuery.docs.first.data();
-                if (userData['password'] == _passwordController.text) {
-                  userFound = true;
-                  centerId = centerDoc.id;
-                  centerName = centerDoc.data()['name'] ?? '';
-                  break;
-                }
-              }
-            }
-
-            if (userFound) {
-              // Save user login data
-              await _saveLoginData('user', centerId: centerId, centerName: centerName);
-              
-              // User login - redirect to dashboard
-              if (mounted) {
-                setState(() {
-                  _isLoading = false;
-                });
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(
-                    builder: (context) => DashboardScreen(
-                      centerId: centerId,
-                      centerName: centerName,
-                    ),
-                  ),
-                );
-              }
-            } else {
-              // User not found or wrong password
+          // Not a valid phone number
               setState(() {
                 _isLoading = false;
               });
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('اسم المستخدم أو كلمة المرور غير صحيحة'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          }
-        }
-      } on FirebaseAuthException catch (e) {
-        setState(() {
-          _isLoading = false;
-        });
-
-        String errorMessage = 'حدث خطأ أثناء تسجيل الدخول';
-        
-        if (e.code == 'user-not-found') {
-          errorMessage = 'المستخدم غير موجود';
-        } else if (e.code == 'wrong-password') {
-          errorMessage = 'كلمة المرور غير صحيحة';
-        } else if (e.code == 'invalid-email') {
-          errorMessage = 'بيانات غير صحيحة';
-        } else if (e.code == 'user-disabled') {
-          errorMessage = 'تم تعطيل هذا الحساب';
-        }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
+              content: Text('يرجى إدخال رقم هاتف صحيح'),
               backgroundColor: Colors.red,
             ),
           );
@@ -402,7 +213,16 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        color: Colors.white,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF2FBDAF).withOpacity(0.1), // لون أزرق أخضر فاتح
+              Colors.grey[50]!, // رمادي فاتح جداً
+            ],
+          ),
+        ),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -421,16 +241,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         // Logo/Icon
                         Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            color: const Color.fromARGB(255, 78, 17, 175),
-                            borderRadius: BorderRadius.circular(50),
-                          ),
-                          child: const Icon(
-                            Icons.local_hospital,
-                            size: 50,
-                            color: Colors.white,
+                          width: 120,
+                          height: 120,
+                          child: Image.asset(
+                            'assets/images/logo.png',
+                            fit: BoxFit.contain,
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -441,7 +256,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
-                            color: Color.fromARGB(255, 78, 17, 175),
+                            color: Colors.black, // لون أسود
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -449,7 +264,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           'سجل دخولك للمتابعة',
                           style: TextStyle(
                             fontSize: 16,
-                            color: Color.fromARGB(255, 78, 17, 175),
+                            color: Colors.black87, // لون أسود فاتح قليلاً
                           ),
                         ),
                         const SizedBox(height: 32),
@@ -460,14 +275,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           decoration: InputDecoration(
                             labelText: "رقم الهاتف",
                             hintText: "أدخل رقم الهاتف",
-                            prefixIcon: const Icon(Icons.person, color: Color.fromARGB(255, 78, 17, 175)),
+                            prefixIcon: const Icon(Icons.person, color: Color(0xFF2FBDAF)),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: const BorderSide(
-                                color: Color.fromARGB(255, 78, 17, 175),
+                                color: Color(0xFF2FBDAF),
                                 width: 2,
                               ),
                             ),
@@ -487,13 +302,13 @@ class _LoginScreenState extends State<LoginScreen> {
                           obscureText: !_isPasswordVisible,
                           decoration: InputDecoration(
                             labelText: 'كلمة المرور',
-                            prefixIcon: const Icon(Icons.lock, color: Color.fromARGB(255, 78, 17, 175)),
+                            prefixIcon: const Icon(Icons.lock, color: Color(0xFF2FBDAF)),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _isPasswordVisible
                                     ? Icons.visibility
                                     : Icons.visibility_off,
-                                color: const Color.fromARGB(255, 78, 17, 175),
+                                color: const Color(0xFF2FBDAF),
                               ),
                               onPressed: () {
                                 setState(() {
@@ -507,7 +322,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: const BorderSide(
-                                color: Color.fromARGB(255, 78, 17, 175),
+                                color: Color(0xFF2FBDAF),
                                 width: 2,
                               ),
                             ),
@@ -528,7 +343,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: ElevatedButton(
                             onPressed: _isLoading ? null : _login,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                              backgroundColor: Color(0xFF2FBDAF),
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -572,7 +387,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: const Text(
                                 'إنشاء حساب',
                                 style: TextStyle(
-                                  color: Color.fromARGB(255, 78, 17, 175),
+                                  color: Color(0xFF2FBDAF),
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                 ),

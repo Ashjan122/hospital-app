@@ -270,13 +270,13 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           elevation: 0,
           leading: IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: Icon(Icons.arrow_back, color: Color.fromARGB(255, 78, 17, 175)),
+            icon: Icon(Icons.arrow_back, color: Color(0xFF2FBDAF)),
           ),
           title: Text(
             "التحقق من رقم الهاتف",
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 78, 17, 175),
+              color: const Color(0xFF2FBDAF),
               fontSize: 24,
             ),
           ),
@@ -302,7 +302,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                       children: [
                         Icon(
                           Icons.phone,
-                          color: const Color.fromARGB(255, 78, 17, 175),
+                          color: const Color(0xFF2FBDAF),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -321,7 +321,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                 style: TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
-                                  color: const Color.fromARGB(255, 78, 17, 175),
+                                  color: const Color(0xFF2FBDAF),
                                 ),
                               ),
                             ],
@@ -366,13 +366,13 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide(
-                                  color: const Color.fromARGB(255, 78, 17, 175),
+                                  color: const Color(0xFF2FBDAF),
                                 ),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: const BorderSide(
-                                  color: Color.fromARGB(255, 78, 17, 175),
+                                  color: Color(0xFF2FBDAF),
                                   width: 2,
                                 ),
                               ),
@@ -380,7 +380,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: const Color.fromARGB(255, 78, 17, 175),
+                              color: const Color(0xFF2FBDAF),
                             ),
                           ),
                         ),
@@ -407,7 +407,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _verifyOTP,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                        backgroundColor: const Color(0xFF2FBDAF),
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -453,7 +453,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                   fontWeight: FontWeight.bold,
                                   color: _remainingTime > 0
                                       ? Colors.grey
-                                      : const Color.fromARGB(255, 78, 17, 175),
+                                      : const Color(0xFF2FBDAF),
                                 ),
                               ),
                       ),

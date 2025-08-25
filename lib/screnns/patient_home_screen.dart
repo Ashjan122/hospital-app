@@ -43,12 +43,12 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             "الرئيسية",
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 78, 17, 175),
+              color: const Color(0xFF2FBDAF),
               fontSize: 30,
             ),
           ),
           leading: IconButton(
-            icon: const Icon(Icons.info_outline, color: Color.fromARGB(255, 78, 17, 175)),
+            icon: const Icon(Icons.info_outline, color: Color(0xFF2FBDAF)),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (context) => const AboutScreen()),
@@ -57,7 +57,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.logout, color: Color.fromARGB(255, 78, 17, 175)),
+              icon: const Icon(Icons.logout, color: Color(0xFF2FBDAF)),
               onPressed: () async {
                 // Clear saved login data
                 final prefs = await SharedPreferences.getInstance();
@@ -104,7 +104,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
-                            color: const Color.fromARGB(255, 78, 17, 175),
+                            color: const Color(0xFF2FBDAF),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -130,7 +130,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                           title: "حجوزاتي",
                           subtitle: "عرض وإدارة حجوزاتك",
                           icon: Icons.calendar_today,
-                          color: const Color.fromARGB(255, 78, 17, 175),
+                          color: const Color(0xFF2FBDAF),
                           onTap: () {
                             Navigator.push(
                               context,

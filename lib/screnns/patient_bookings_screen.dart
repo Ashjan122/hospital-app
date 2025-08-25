@@ -4,6 +4,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:hospital_app/screnns/booking_screen.dart';
 import 'package:hospital_app/widgets/optimized_loading_widget.dart';
+import 'package:hospital_app/services/syncfusion_pdf_service.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:io';
+import 'dart:typed_data';
 
 class PatientBookingsScreen extends StatefulWidget {
   const PatientBookingsScreen({super.key});
@@ -248,9 +255,9 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
       case 'منتهي':
         return Colors.grey;
       case 'اليوم':
-        return Colors.green;
+        return const Color(0xFF2FBDAF);
       case 'قادم':
-        return Colors.blue;
+        return const Color(0xFF2FBDAF);
       default:
         return Colors.grey;
     }
@@ -306,7 +313,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('تم إلغاء الحجز بنجاح'),
-            backgroundColor: Colors.green,
+            backgroundColor: Color(0xFF2FBDAF),
           ),
         );
       } catch (e) {
@@ -353,7 +360,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('لا توجد أيام متاحة للطبيب حالياً'),
-            backgroundColor: Colors.orange,
+            backgroundColor: Color(0xFF2FBDAF),
           ),
         );
         return;
@@ -396,7 +403,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
             "حجوزاتي",
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 78, 17, 175),
+              color: const Color(0xFF2FBDAF),
               fontSize: 30,
             ),
           ),
@@ -460,7 +467,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                 child: _isLoading
                     ? const OptimizedLoadingWidget(
                         message: 'جاري تحميل الحجوزات...',
-                        color: Color.fromARGB(255, 78, 17, 175),
+                        color: Color(0xFF2FBDAF),
                       )
                     : filteredBookings.isEmpty
                         ? Center(
@@ -608,11 +615,23 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                           Expanded(
                                             child: OutlinedButton.icon(
                                               onPressed: () => _rescheduleBooking(booking),
-                                              icon: const Icon(Icons.schedule, size: 16),
+                                              icon: const Icon(Icons.schedule, size: 16, color: Color(0xFF2FBDAF)),
                                               label: const Text('تأجيل'),
                                               style: OutlinedButton.styleFrom(
-                                                foregroundColor: Colors.blue,
-                                                side: const BorderSide(color: Colors.blue),
+                                                foregroundColor: const Color(0xFF2FBDAF),
+                                                side: const BorderSide(color: Color(0xFF2FBDAF)),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: OutlinedButton.icon(
+                                              onPressed: () => _generatePdfForBooking(booking),
+                                              icon: const Icon(Icons.picture_as_pdf, size: 16, color: Colors.orange),
+                                              label: const Text('PDF'),
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: Colors.orange,
+                                                side: const BorderSide(color: Colors.orange),
                                               ),
                                             ),
                                           ),
@@ -631,7 +650,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                                         color: Colors.red,
                                                       ),
                                                     )
-                                                  : const Icon(Icons.cancel, size: 16),
+                                                  : const Icon(Icons.cancel, size: 16, color: Colors.red),
                                               label: Text(
                                                 _cancellingBookings.contains(booking['id'])
                                                     ? 'جاري الإلغاء...'
@@ -655,6 +674,204 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _generatePdfForBooking(Map<String, dynamic> booking) async {
+    try {
+      // التحقق من البيانات المطلوبة
+      if (booking['patientName'] == null || booking['patientName'].toString().isEmpty) {
+        _showDialog("خطأ", "اسم المريض مطلوب");
+        return;
+      }
+      
+      if (booking['patientPhone'] == null || booking['patientPhone'].toString().isEmpty) {
+        _showDialog("خطأ", "رقم الهاتف مطلوب");
+        return;
+      }
+
+      // تحويل التاريخ من string إلى DateTime
+      final bookingDate = DateTime.tryParse(booking['date'] ?? '');
+      if (bookingDate == null) {
+        _showDialog("خطأ", "تاريخ الحجز غير صحيح");
+        return;
+      }
+
+              // إنشاء PDF وحفظه
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final String filePath = '${appDocDir.path}/booking_confirmation.pdf';
+      final File file = File(filePath);
+      
+      // إنشاء PDF
+      await SyncfusionPdfService.generateBookingPdf(
+        facilityName: booking['facilityName'] ?? 'مركز طبي',
+        specializationName: booking['specializationName'] ?? 'تخصص طبي',
+        doctorName: booking['doctorName'] ?? 'طبيب',
+        patientName: booking['patientName'].toString(),
+        patientPhone: booking['patientPhone'].toString(),
+        bookingDate: bookingDate,
+        bookingTime: booking['time'] ?? '',
+        period: booking['period'] ?? 'morning',
+        bookingId: booking['id'] ?? 'UNKNOWN',
+      );
+      
+      // عرض خيارات فتح ومشاركة
+      showModalBottomSheet(
+        context: context,
+        builder: (context) => Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '  تفاصيل الحجز PDF',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _openPdf(file);
+                      },
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('فتح'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2FBDAF),
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _shareToWhatsApp(file);
+                      },
+                      icon: const Icon(Icons.share),
+                      label: const Text('واتساب'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      print('خطأ في توليد PDF: $e');
+      _showDialog("خطأ", "حدث خطأ في إنشاء PDF: ${e.toString()}");
+    }
+  }
+
+  void _sharePdfData(Uint8List pdfData) async {
+    try {
+      // استخدام path_provider للحصول على مجلد مؤقت
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/booking_${DateTime.now().millisecondsSinceEpoch}.pdf');
+      await tempFile.writeAsBytes(pdfData);
+      
+      print('تم حفظ PDF في: ${tempFile.path}');
+      
+      Share.shareXFiles(
+        [XFile(tempFile.path)],
+        text: 'تأكيد الحجز الطبي',
+      );
+    } catch (e) {
+      print('خطأ في مشاركة PDF: $e');
+      _showDialog("خطأ", "حدث خطأ في مشاركة PDF: ${e.toString()}");
+    }
+  }
+
+  void _openPdfData(Uint8List pdfData) async {
+    try {
+      // استخدام path_provider للحصول على مجلد مؤقت
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/booking_${DateTime.now().millisecondsSinceEpoch}.pdf');
+      await tempFile.writeAsBytes(pdfData);
+      
+      print('تم حفظ PDF في: ${tempFile.path}');
+      
+      // استخدام open_file لفتح PDF
+      final result = await OpenFile.open(tempFile.path);
+      
+      if (result.type != ResultType.done) {
+        _showDialog("خطأ", "لا يمكن فتح الملف: ${result.message}");
+      }
+    } catch (e) {
+      print('خطأ في فتح PDF: $e');
+      _showDialog("خطأ", "حدث خطأ في فتح PDF: ${e.toString()}");
+    }
+  }
+
+  void _sharePdf(File pdfFile) {
+    Share.shareXFiles(
+      [XFile(pdfFile.path)],
+      text: 'تأكيد الحجز الطبي',
+    );
+  }
+
+  void _openPdf(File pdfFile) async {
+    try {
+      // استخدام open_file لفتح PDF
+      final result = await OpenFile.open(pdfFile.path);
+      
+      if (result.type != ResultType.done) {
+        _showDialog("خطأ", "لا يمكن فتح الملف: ${result.message}");
+      }
+    } catch (e) {
+      print('خطأ في فتح PDF: $e');
+      _showDialog("خطأ", "حدث خطأ في فتح PDF: ${e.toString()}");
+    }
+  }
+
+  void _shareToWhatsApp(File pdfFile) async {
+    try {
+      // مشاركة الملف مباشرة مع تحديد واتساب كهدف
+      await Share.shareXFiles(
+        [XFile(pdfFile.path)],
+        text: 'تأكيد الحجز الطبي - مركز جودة الطبي\n\nمركز جودة الطبي\n📞 +249991961111',
+        subject: 'تأكيد الحجز الطبي',
+      );
+    } catch (e) {
+      print('خطأ في مشاركة الملف: $e');
+      _showDialog("خطأ", "حدث خطأ في مشاركة الملف: ${e.toString()}");
+    }
+  }
+
+  
+
+
+
+  void _showDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Center(
+          child: Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        content: Text(message, textAlign: TextAlign.center),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text("موافق", style: TextStyle(fontSize: 16)),
+          ),
+        ],
       ),
     );
   }

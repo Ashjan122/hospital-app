@@ -156,11 +156,15 @@ class _AboutScreenState extends State<AboutScreen> {
                               width: 56,
                               height: 56,
                               decoration: BoxDecoration(
-                                color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.08),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              alignment: Alignment.center,
-                              child: const Text('قريباً', style: TextStyle(color: Color.fromARGB(255, 78, 17, 175), fontWeight: FontWeight.bold)),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.asset(
+                                  'assets/images/icon.png',
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -455,3 +459,4 @@ class _ExpandablePolicyState extends State<_ExpandablePolicy> {
     );
   }
 }
+

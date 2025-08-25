@@ -2,6 +2,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hospital_app/screnns/patient_bookings_screen.dart';
+import 'package:hospital_app/services/syncfusion_pdf_service.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'dart:typed_data';
 
 class PatientInfoScreen extends StatefulWidget {
   final String facilityId;
@@ -36,24 +42,94 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
   String? selectedTime;
   bool? isBookingForSelf; // null = لم يتم الاختيار بعد، true = لنفسه، false = لشخص آخر
   bool showBookingChoice = true; // عرض خيار الحجز لنفسه أم لشخص آخر
+  bool showBookingSuccess = false; // إظهار رسالة نجاح الحجز
+  
+  // Controllers for text fields
+  late TextEditingController _nameController;
+  late TextEditingController _phoneController;
+  
+  // Data for PDF generation
+  String? facilityName;
+  String? specializationName;
+  String? doctorName;
 
 
   @override
   void initState() {
     super.initState();
     
+    // Initialize controllers
+    _nameController = TextEditingController();
+    _phoneController = TextEditingController();
+    
     // إذا كان هذا تأجيل حجز، استخدم البيانات القديمة
     if (widget.isReschedule && widget.oldBookingData != null) {
       patientName = widget.oldBookingData!['patientName'];
       patientPhone = widget.oldBookingData!['patientPhone'];
+      _nameController.text = patientName ?? '';
+      _phoneController.text = patientPhone ?? '';
       isBookingForSelf = false; // تأجيل الحجز يعتبر لشخص آخر
       showBookingChoice = false; // لا نحتاج لخيار الحجز في التأجيل
     }
     
+    // جلب بيانات المركز والتخصص والطبيب
+    _loadFacilityData();
+  }
 
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    super.dispose();
   }
 
 
+
+  Future<void> _loadFacilityData() async {
+    try {
+      // جلب اسم المركز
+      final facilityDoc = await FirebaseFirestore.instance
+          .collection('medicalFacilities')
+          .doc(widget.facilityId)
+          .get();
+      
+      if (facilityDoc.exists) {
+        facilityName = facilityDoc.data()?['name'] ?? 'مركز طبي';
+      }
+      
+      // جلب اسم التخصص
+      final specializationDoc = await FirebaseFirestore.instance
+          .collection('medicalFacilities')
+          .doc(widget.facilityId)
+          .collection('specializations')
+          .doc(widget.specializationId)
+          .get();
+      
+      if (specializationDoc.exists) {
+        specializationName = specializationDoc.data()?['specName'] ?? 'تخصص طبي';
+      }
+      
+      // جلب اسم الطبيب
+      final doctorDoc = await FirebaseFirestore.instance
+          .collection('medicalFacilities')
+          .doc(widget.facilityId)
+          .collection('specializations')
+          .doc(widget.specializationId)
+          .collection('doctors')
+          .doc(widget.doctorId)
+          .get();
+      
+      if (doctorDoc.exists) {
+        doctorName = doctorDoc.data()?['name'] ?? 'طبيب';
+      }
+      
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('خطأ في جلب بيانات المركز: $e');
+    }
+  }
 
   Future<void> loadPatientData() async {
     final prefs = await SharedPreferences.getInstance();
@@ -84,6 +160,8 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       setState(() {
         patientName = userName;
         patientPhone = formattedPhone;
+        _nameController.text = userName;
+        _phoneController.text = formattedPhone;
       });
       
       if (mounted) {
@@ -131,6 +209,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     final schedule = widget.workingSchedule[dayName];
     final shiftKey = widget.selectedShift ?? 'morning';
     final shiftData = schedule[shiftKey];
+    
     if (shiftData == null) return null;
 
     // فحص عدد المرضى المحجوزين في هذا اليوم والفترة
@@ -167,8 +246,14 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       return null; // لا توجد مواعيد متاحة
     }
 
+    // تحويل الوقت من 12 ساعة إلى 24 ساعة
     int startHour = int.parse(shiftData['start'].split(":")[0]);
     int endHour = int.parse(shiftData['end'].split(":")[0]);
+    
+    // إذا كان وقت النهاية أقل من وقت البداية، فهذا يعني أنه بعد الظهر
+    if (endHour < startHour) {
+      endHour += 12; // تحويل إلى 24 ساعة
+    }
 
     for (int hour = startHour; hour <= endHour; hour++) {
       for (String suffix in [":00", ":30"]) {
@@ -190,16 +275,6 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
   }
 
   Future<void> confirmBooking() async {
-    if (isBookingForSelf == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('يرجى اختيار نوع الحجز أولاً قبل إدخال البيانات'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
     
     if (patientName == null ||
         patientName!.isEmpty ||
@@ -223,7 +298,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       return;
     }
 
-    // التحقق من عدم وجود حجز سابق لنفس الشخص في نفس اليوم
+    // التحقق من عدم وجود حجز سابق لنفس الشخص في نفس اليوم (بالاسم الرباعي فقط)
     final checkDateStr = intl.DateFormat('yyyy-MM-dd').format(widget.selectedDate);
     final existingBooking = await FirebaseFirestore.instance
         .collection('medicalFacilities')
@@ -234,11 +309,11 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         .doc(widget.doctorId)
         .collection('appointments')
         .where('date', isEqualTo: checkDateStr)
-        .where('patientPhone', isEqualTo: patientPhone)
+        .where('patientName', isEqualTo: patientName)
         .get();
 
     if (existingBooking.docs.isNotEmpty) {
-      _showDialog("حجز موجود", "لديك حجز سابق في نفس اليوم لهذا الطبيب. لا يمكن الحجز مرة اخرى");
+      _showDialog("حجز موجود", "يوجد حجز سابق لنفس الاسم في نفس اليوم لهذا الطبيب. لا يمكن الحجز مرة اخرى");
       return;
     }
     
@@ -318,7 +393,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     }
 
     // إضافة الحجز الجديد
-    await FirebaseFirestore.instance
+    final bookingDocRef = await FirebaseFirestore.instance
         .collection('medicalFacilities')
         .doc(widget.facilityId)
         .collection('specializations')
@@ -337,15 +412,26 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
           'createdAt': FieldValue.serverTimestamp(),
           'isConfirmed': false, // الحجز الجديد يحتاج تأكيد
         });
+    
+    final bookingId = bookingDocRef.id;
 
     if (!mounted) return;
 
     setState(() {
       isLoading = false;
       selectedTime = availableTime;
+      showBookingSuccess = true;
     });
 
     final actionText = widget.isReschedule ? "تم تأجيل الحجز" : "تم الحجز";
+    
+    // توليد PDF للحجز
+    await _generateBookingPdf(
+      dateStr: dateStr,
+      availableTime: availableTime,
+      period: period,
+      bookingId: bookingId,
+    );
     
     // مسح البيانات بعد تأكيد الحجز
     setState(() {
@@ -353,11 +439,13 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       patientPhone = null;
       isBookingForSelf = null;
       showBookingChoice = true;
+      _nameController.clear();
+      _phoneController.clear();
     });
 
     _showDialog(
       actionText,
-      "تم تأكيد $actionText بتاريخ $dateStr الساعة $availableTime (${period == 'morning' ? 'صباحاً' : 'مساءً'})",
+      "تم الحجز بتاريخ $dateStr الساعة $availableTime (${period == 'morning' ? 'صباحاً' : 'مساءً'})",
     );
   }
 
@@ -373,7 +461,13 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       // جلب بيانات المريض من SharedPreferences
       await loadPatientData();
     } else {
-      // إذا اختار لشخص آخر، اعرض رسالة
+      // إذا اختار لشخص آخر، اقرأ البيانات الموجودة في الحقول
+      setState(() {
+        patientName = _nameController.text.trim();
+        patientPhone = _phoneController.text.trim();
+      });
+      
+      // اعرض رسالة
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -383,6 +477,103 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         );
       }
     }
+  }
+
+  String _getConfirmationDayText() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final bookingDate = DateTime(widget.selectedDate.year, widget.selectedDate.month, widget.selectedDate.day);
+    
+    if (bookingDate.isAtSameMomentAs(today)) {
+      return "اليوم";
+    } else if (bookingDate.isAfter(today)) {
+      return "غداً";
+    } else {
+      return "اليوم";
+    }
+  }
+
+  Future<void> _generateBookingPdf({
+    required String dateStr,
+    required String availableTime,
+    required String period,
+    required String bookingId,
+  }) async {
+    try {
+      // التحقق من وجود البيانات المطلوبة
+      if (patientName == null || patientName!.isEmpty) {
+        throw Exception('اسم المريض مطلوب');
+      }
+      
+      if (patientPhone == null || patientPhone!.isEmpty) {
+        throw Exception('رقم الهاتف مطلوب');
+      }
+
+              await SyncfusionPdfService.generateBookingPdf(
+        facilityName: facilityName ?? 'مركز طبي',
+        specializationName: specializationName ?? 'تخصص طبي',
+        doctorName: doctorName ?? 'طبيب',
+        patientName: patientName!,
+        patientPhone: patientPhone!,
+        bookingDate: widget.selectedDate,
+        bookingTime: availableTime,
+        period: period,
+        bookingId: bookingId,
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('تم إنشاء PDF للحجز بنجاح'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('خطأ في توليد PDF: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في إنشاء PDF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  void _sharePdfData(Uint8List pdfData) async {
+    try {
+      // استخدام path_provider للحصول على مجلد مؤقت
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/booking_${DateTime.now().millisecondsSinceEpoch}.pdf');
+      await tempFile.writeAsBytes(pdfData);
+      
+      print('تم حفظ PDF في: ${tempFile.path}');
+      
+      Share.shareXFiles(
+        [XFile(tempFile.path)],
+        text: 'تأكيد الحجز الطبي',
+      );
+    } catch (e) {
+      print('خطأ في مشاركة PDF: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('خطأ في مشاركة PDF: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _sharePdf(File pdfFile) {
+    Share.shareXFiles(
+      [XFile(pdfFile.path)],
+      text: 'تأكيد الحجز الطبي',
+    );
   }
 
   void _showDialog(String title, String message) {
@@ -418,7 +609,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
             widget.isReschedule ? "تأجيل الحجز" : "إدخال البيانات",
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 78, 17, 175),
+              color: const Color(0xFF2FBDAF),
               fontSize: 30,
             ),
           ),
@@ -437,7 +628,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: Color.fromARGB(255, 78, 17, 175),
+                              color: Color(0xFF2FBDAF),
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -446,11 +637,11 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                               Expanded(
                                 child: ElevatedButton.icon(
                                   onPressed: () => _selectBookingType(true),
-                                  icon: const Icon(Icons.person),
+                                  icon: Icon(Icons.person, color: isBookingForSelf == true ? Colors.white : const Color(0xFF2FBDAF)),
                                   label: const Text('لنفسي'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: isBookingForSelf == true 
-                                        ? const Color.fromARGB(255, 78, 17, 175)
+                                        ? const Color(0xFF2FBDAF)
                                         : Colors.grey[200],
                                     foregroundColor: isBookingForSelf == true 
                                         ? Colors.white
@@ -466,11 +657,11 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                               Expanded(
                                 child: ElevatedButton.icon(
                                   onPressed: () => _selectBookingType(false),
-                                  icon: const Icon(Icons.person_add),
+                                  icon: Icon(Icons.person_add, color: isBookingForSelf == false ? Colors.white : const Color(0xFF2FBDAF)),
                                   label: const Text('لشخص آخر'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: isBookingForSelf == false 
-                                        ? const Color.fromARGB(255, 78, 17, 175)
+                                        ? const Color(0xFF2FBDAF)
                                         : Colors.grey[200],
                                     foregroundColor: isBookingForSelf == false 
                                         ? Colors.white
@@ -491,17 +682,17 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                             width: double.infinity,
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.1),
+                              color: const Color(0xFF2FBDAF).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: const Color.fromARGB(255, 78, 17, 175).withOpacity(0.3),
+                                color: const Color(0xFF2FBDAF).withOpacity(0.3),
                               ),
                             ),
                             child: Row(
                               children: [
                                 Icon(
                                   isBookingForSelf == true ? Icons.person : Icons.person_add,
-                                  color: const Color.fromARGB(255, 78, 17, 175),
+                                  color: const Color(0xFF2FBDAF),
                                   size: 20,
                                 ),
                                 const SizedBox(width: 8),
@@ -512,7 +703,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                                   style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
-                                    color: Color.fromARGB(255, 78, 17, 175),
+                                    color: Color(0xFF2FBDAF),
                                   ),
                                 ),
                                 const Spacer(),
@@ -524,12 +715,14 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                                       isBookingForSelf = null;
                                       patientName = null;
                                       patientPhone = null;
+                                      _nameController.clear();
+                                      _phoneController.clear();
                                     });
                                   },
                                   child: const Text(
                                     'تغيير',
                                     style: TextStyle(
-                                      color: Color.fromARGB(255, 78, 17, 175),
+                                      color: Color(0xFF2FBDAF),
                                       fontWeight: FontWeight.bold,
                                       fontSize: 12,
                                     ),
@@ -549,22 +742,15 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                             labelText: 'الاسم الرباعي *',
                             hintText: 'الاسم الأول - اسم الأب - اسم الجد - اسم العائلة',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.person),
+                            prefixIcon: Icon(Icons.person, color: const Color(0xFF2FBDAF)),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: const Color(0xFF2FBDAF), width: 2),
+                            ),
+                            labelStyle: TextStyle(color: const Color(0xFF2FBDAF)),
                           ),
-                          onTap: () {
-                            if (isBookingForSelf == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('يرجى اختيار نوع الحجز أولاً قبل إدخال البيانات'),
-                                  backgroundColor: Colors.red,
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            }
-                          },
                           onChanged: (val) => patientName = val,
                           textDirection: TextDirection.rtl,
-                          controller: patientName != null ? TextEditingController(text: patientName) : null,
+                          controller: _nameController,
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'يرجى إدخال الاسم الرباعي';
@@ -587,23 +773,16 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                             labelText: 'رقم الهاتف *',
                             hintText: '01XXXXXXXX أو 09XXXXXXXX',
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.phone),
+                            prefixIcon: Icon(Icons.phone, color: const Color(0xFF2FBDAF)),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: const Color(0xFF2FBDAF), width: 2),
+                            ),
+                            labelStyle: TextStyle(color: const Color(0xFF2FBDAF)),
                           ),
-                          onTap: () {
-                            if (isBookingForSelf == null) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('يرجى اختيار نوع الحجز أولاً قبل إدخال البيانات'),
-                                  backgroundColor: Colors.red,
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            }
-                          },
                           onChanged: (val) => patientPhone = val,
                           keyboardType: TextInputType.phone,
                           textDirection: TextDirection.rtl,
-                          controller: patientPhone != null ? TextEditingController(text: patientPhone) : null,
+                          controller: _phoneController,
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'يرجى إدخال رقم الهاتف';
@@ -621,7 +800,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                       ElevatedButton(
                         onPressed: confirmBooking,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                          backgroundColor: const Color(0xFF2FBDAF),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 24,
@@ -639,14 +818,84 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                           ),
                         ),
                       ),
-                      if (selectedTime != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 16.0),
-                          child: Text(
-                            "✅ تم تأكيد الحجز الساعة $selectedTime (${widget.selectedShift == 'morning' ? 'صباحاً' : 'مساءً'})",
-                              style: const TextStyle(fontSize: 18, color: Colors.green),
+                      
+                      // رسالة نجاح الحجز وزر حجوزاتي
+                      if (showBookingSuccess) ...[
+                        const SizedBox(height: 20),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.green.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              RichText(
+                                textAlign: TextAlign.center,
+                                text: TextSpan(
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                  ),
+                                  children: [
+                                    const TextSpan(text: "سيتم تأكيد الحجز عبر رسالة نصية "),
+                                    TextSpan(
+                                      text: _getConfirmationDayText(),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                "الانتقال إلى:",
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              ElevatedButton(
+                                onPressed: () {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const PatientBookingsScreen(),
+                                    ),
+                                  );
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF2FBDAF),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text(
+                                  "حجوزاتي",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                      ],
+
                     ],
                   ),
                 ),

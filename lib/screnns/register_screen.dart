@@ -206,12 +206,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
             fontSize: 20,
           ),
         ),
-        backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+        backgroundColor: const Color(0xFF2FBDAF),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
       body: Container(
-        color: Colors.white,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF2FBDAF).withOpacity(0.1), // لون أزرق أخضر فاتح
+              Colors.grey[50]!, // رمادي فاتح جداً
+            ],
+          ),
+        ),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -230,16 +239,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       children: [
                         // Logo/Icon
                         Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            color: const Color.fromARGB(255, 78, 17, 175),
-                            borderRadius: BorderRadius.circular(50),
-                          ),
-                          child: const Icon(
-                            Icons.person_add,
-                            size: 50,
-                            color: Colors.white,
+                          width: 120,
+                          height: 120,
+                          child: Image.asset(
+                            'assets/images/logo.png',
+                            fit: BoxFit.contain,
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -250,7 +254,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           style: TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.bold,
-                            color: Color.fromARGB(255, 78, 17, 175),
+                            color: Colors.black,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -258,7 +262,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           'أدخل بياناتك لإنشاء حساب',
                           style: TextStyle(
                             fontSize: 16,
-                            color: Color.fromARGB(255, 78, 17, 175),
+                            color: Colors.black87,
                           ),
                         ),
                         const SizedBox(height: 32),
@@ -270,12 +274,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           decoration: InputDecoration(
                             labelText: 'رقم الهاتف *',
                             hintText: '01XXXXXXXX أو 09XXXXXXXX',
-                            prefixIcon: const Icon(Icons.phone, color: Color.fromARGB(255, 78, 17, 175)),
+                            prefixIcon: const Icon(Icons.phone, color: Color(0xFF2FBDAF)),
                             prefixText: '+249 ',
                             prefixStyle: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: Color.fromARGB(255, 78, 17, 175),
+                              color: Color(0xFF2FBDAF),
                             ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -283,7 +287,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: const BorderSide(
-                                color: Color.fromARGB(255, 78, 17, 175),
+                                color: Color(0xFF2FBDAF),
                                 width: 2,
                               ),
                             ),
@@ -325,14 +329,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           decoration: InputDecoration(
                             labelText: 'الاسم الرباعي *',
                             hintText: 'الاسم الأول - اسم الأب - اسم الجد - اسم العائلة',
-                            prefixIcon: const Icon(Icons.person, color: Color.fromARGB(255, 78, 17, 175)),
+                            prefixIcon: const Icon(Icons.person, color: Color(0xFF2FBDAF)),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: const BorderSide(
-                                color: Color.fromARGB(255, 78, 17, 175),
+                                color: Color(0xFF2FBDAF),
                                 width: 2,
                               ),
                             ),
@@ -373,13 +377,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           obscureText: !_isPasswordVisible,
                           decoration: InputDecoration(
                             labelText: 'كلمة المرور',
-                            prefixIcon: const Icon(Icons.lock, color: Color.fromARGB(255, 78, 17, 175)),
+                            prefixIcon: const Icon(Icons.lock, color: Color(0xFF2FBDAF)),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _isPasswordVisible
                                     ? Icons.visibility
                                     : Icons.visibility_off,
-                                color: const Color.fromARGB(255, 78, 17, 175),
+                                color: const Color(0xFF2FBDAF),
                               ),
                               onPressed: () {
                                 setState(() {
@@ -393,7 +397,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: const BorderSide(
-                                color: Color.fromARGB(255, 78, 17, 175),
+                                color: Color(0xFF2FBDAF),
                                 width: 2,
                               ),
                             ),
@@ -416,13 +420,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           obscureText: !_isConfirmPasswordVisible,
                           decoration: InputDecoration(
                             labelText: 'تأكيد كلمة المرور',
-                            prefixIcon: const Icon(Icons.lock_outline, color: Color.fromARGB(255, 78, 17, 175)),
+                            prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF2FBDAF)),
                             suffixIcon: IconButton(
                               icon: Icon(
                                 _isConfirmPasswordVisible
                                     ? Icons.visibility
                                     : Icons.visibility_off,
-                                color: const Color.fromARGB(255, 78, 17, 175),
+                                color: const Color(0xFF2FBDAF),
                               ),
                               onPressed: () {
                                 setState(() {
@@ -436,7 +440,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: const BorderSide(
-                                color: Color.fromARGB(255, 78, 17, 175),
+                                color: Color(0xFF2FBDAF),
                                 width: 2,
                               ),
                             ),
@@ -460,7 +464,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           child: ElevatedButton(
                             onPressed: _isLoading ? null : _register,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color.fromARGB(255, 78, 17, 175),
+                              backgroundColor: const Color(0xFF2FBDAF),
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -506,7 +510,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               child: const Text(
                                 'تسجيل الدخول',
                                 style: TextStyle(
-                                  color: Color.fromARGB(255, 78, 17, 175),
+                                  color: Color(0xFF2FBDAF),
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
                                 ),

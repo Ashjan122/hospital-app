@@ -65,7 +65,7 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                         _searchController.clear();
                       });
                     },
-                    icon: Icon(Icons.close, color: Color.fromARGB(255, 78, 17, 175)),
+                    icon: Icon(Icons.close, color: Color(0xFF2FBDAF)),
                   )
                 : IconButton(
                     onPressed: () {
@@ -73,7 +73,7 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                         _isSearching = true;
                       });
                     },
-                    icon: Icon(Icons.search, color: Color.fromARGB(255, 78, 17, 175)),
+                    icon: Icon(Icons.search, color: Color(0xFF2FBDAF)),
                   ),
           ],
           title: _isSearching
@@ -102,7 +102,7 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                   "التخصصات الطبية",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: const Color.fromARGB(255, 78, 17, 175),
+                    color: const Color(0xFF2FBDAF),
                     fontSize: 30,
                   ),
                 ),
@@ -114,7 +114,7 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const OptimizedLoadingWidget(
                   message: 'جاري تحميل التخصصات...',
-                  color: Color.fromARGB(255, 78, 17, 175),
+                  color: Color(0xFF2FBDAF),
                 );
               }
 
@@ -198,7 +198,7 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                         child: ListTile(
                           leading: Icon(
                             Icons.medical_services,
-                            color: Color.fromARGB(255, 78, 17, 175),
+                            color: Color(0xFF2FBDAF),
                           ),
                           title: Text(
                             specName,

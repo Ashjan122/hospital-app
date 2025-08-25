@@ -69,6 +69,51 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     }).toList();
   }
 
+  String _getWorkingDaysText(dynamic workingSchedule) {
+    if (workingSchedule == null || workingSchedule.isEmpty) {
+      return 'أيام العمل: غير محدد';
+    }
+
+    // تحويل إلى Map إذا لم يكن كذلك
+    Map<String, dynamic> scheduleMap;
+    if (workingSchedule is Map) {
+      scheduleMap = Map<String, dynamic>.from(workingSchedule);
+    } else {
+      return 'أيام العمل: غير محدد';
+    }
+
+    List<String> workingDays = [];
+    
+    scheduleMap.forEach((day, value) {
+      // التحقق من أن اليوم موجود في قائمة الأيام العربية
+      if (day is String && (day == 'الأحد' || day == 'الاثنين' || day == 'الثلاثاء' || 
+                           day == 'الأربعاء' || day == 'الخميس' || day == 'الجمعة' || day == 'السبت')) {
+        // إذا كان اليوم موجود في الجدول، فهو يوم عمل
+        workingDays.add(day);
+      }
+    });
+
+    if (workingDays.isEmpty) {
+      return 'أيام العمل: غير محدد';
+    }
+
+    // ترتيب الأيام حسب ترتيبها في الأسبوع
+    final dayOrder = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    workingDays.sort((a, b) => dayOrder.indexOf(a).compareTo(dayOrder.indexOf(b)));
+
+    // إذا كان عدد الأيام أكثر من 4، نقسمها على سطرين
+    String result;
+    if (workingDays.length > 4) {
+      final firstLine = workingDays.take(4).join(' - ');
+      final secondLine = workingDays.skip(4).join(' - ');
+      result = 'أيام العمل:\n$firstLine\n$secondLine';
+    } else {
+      result = 'أيام العمل: ${workingDays.join(' - ')}';
+    }
+    
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -85,7 +130,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                         _searchController.clear();
                       });
                     },
-                    icon: Icon(Icons.close, color: Color.fromARGB(255, 78, 17, 175)),
+                    icon: Icon(Icons.close, color: Color(0xFF2FBDAF)),
                   )
                 : IconButton(
                     onPressed: () {
@@ -93,7 +138,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                         _isSearching = true;
                       });
                     },
-                    icon: Icon(Icons.search, color: Color.fromARGB(255, 78, 17, 175)),
+                    icon: Icon(Icons.search, color: Color(0xFF2FBDAF)),
                   ),
           ],
           title: _isSearching
@@ -122,7 +167,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                   "الأطباء",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: Color.fromARGB(255, 78, 17, 175),
+                    color: Color(0xFF2FBDAF),
                     fontSize: 30,
                   ),
                 ),
@@ -134,7 +179,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const OptimizedLoadingWidget(
                   message: 'جاري تحميل الأطباء...',
-                  color: Color.fromARGB(255, 78, 17, 175),
+                  color: Color(0xFF2FBDAF),
                 );
               }
 
@@ -200,6 +245,10 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                   final bool hasValidPhoto = photoUrl.startsWith('http');
                   const String fallbackUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
                   final String effectiveUrl = hasValidPhoto ? photoUrl : fallbackUrl;
+                  
+
+                  
+
 
                   return GestureDetector(
                     key: ValueKey(doc.id),
@@ -250,12 +299,28 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                             SizedBox(width: 16),
 
                             Expanded(
-                              child: Text(
-                                doctorName,
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    doctorName,
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    _getWorkingDaysText(doctorData['workingSchedule'] ?? {}),
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
                               ),
                             ),
                             Icon(

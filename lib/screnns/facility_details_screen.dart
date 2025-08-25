@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hospital_app/screnns/specialties_screen.dart';
 import 'package:hospital_app/screnns/insurance_companies_screen.dart';
 
@@ -31,13 +30,13 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
             onPressed: () {
               Navigator.pop(context);
             },
-            icon: Icon(Icons.arrow_back, color: Color.fromARGB(255, 78, 17, 175)),
+            icon: Icon(Icons.arrow_back, color: Color(0xFF2FBDAF)),
           ),
           title: Text(
             widget.facilityName,
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: const Color.fromARGB(255, 78, 17, 175),
+              color: const Color(0xFF2FBDAF),
               fontSize: 24,
             ),
           ),
@@ -49,6 +48,7 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
+                  
                   // Cards section
                   Expanded(
                     child: Column(
@@ -58,7 +58,7 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                           title: "احجز الان",
                           subtitle: "استكشف التخصصات المتاحة",
                           icon: Icons.medical_services,
-                          color: const Color.fromARGB(255, 78, 17, 175),
+                          color: const Color(0xFF2FBDAF),
                           onTap: () {
                             Navigator.push(
                               context,
@@ -77,7 +77,7 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                           title: "شركات التأمين",
                           subtitle: "عرض شركات التأمين المتعاقدة",
                           icon: Icons.security,
-                          color: const Color.fromARGB(255, 78, 17, 175),
+                          color: const Color(0xFF2FBDAF),
                           onTap: () {
                             Navigator.push(
                               context,
