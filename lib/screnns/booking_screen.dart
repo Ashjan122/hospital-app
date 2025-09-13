@@ -12,6 +12,9 @@ class BookingScreen extends StatefulWidget {
   final String doctorId;
   final bool isReschedule;
   final Map<String, dynamic>? oldBookingData;
+  final bool showDoctorInfo; // جديد: لعرض معلومات الطبيب
+  final String? doctorSpecialty; // جديد: تخصص الطبيب
+  final String? centerName; // جديد: اسم المركز
 
   const BookingScreen({
     super.key,
@@ -22,6 +25,9 @@ class BookingScreen extends StatefulWidget {
     required this.doctorId,
     this.isReschedule = false,
     this.oldBookingData,
+    this.showDoctorInfo = false, // افتراضياً false
+    this.doctorSpecialty,
+    this.centerName,
   });
 
   @override
@@ -661,14 +667,36 @@ class _BookingScreenState extends State<BookingScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            "اختيار الموعد",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: const Color(0xFF2FBDAF),
-              fontSize: 30,
-            ),
-          ),
+          title: widget.showDoctorInfo 
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF2FBDAF),
+                      fontSize: 20,
+                    ),
+                  ),
+                  if (widget.doctorSpecialty != null || widget.centerName != null)
+                    Text(
+                      '${widget.doctorSpecialty ?? ''}${widget.doctorSpecialty != null && widget.centerName != null ? ' - ' : ''}${widget.centerName ?? ''}',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                ],
+              )
+            : Text(
+                "اختيار الموعد",
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF2FBDAF),
+                  fontSize: 30,
+                ),
+              ),
         ),
         body: SafeArea(
           child: Padding(
@@ -676,7 +704,7 @@ class _BookingScreenState extends State<BookingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-                Text("اختر يوم من الأيام المتاحة:", style: TextStyle(fontSize: 18)),
+              Text("اختر يوم من الأيام المتاحة:", style: TextStyle(fontSize: 18)),
                 const SizedBox(height: 6),
                 Row(
                   children: [
