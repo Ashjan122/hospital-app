@@ -1,16 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart' as intl;
-import 'package:hospital_app/screnns/booking_screen.dart';
 import 'package:hospital_app/widgets/optimized_loading_widget.dart';
 import 'package:hospital_app/services/syncfusion_pdf_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
-import 'dart:typed_data';
 
 class PatientBookingsScreen extends StatefulWidget {
   const PatientBookingsScreen({super.key});
@@ -26,6 +22,30 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
   bool _isLoading = true;
   String _selectedFilter = 'all'; // all, today, upcoming, past
   Set<String> _cancellingBookings = {}; // لتتبع الحجوزات التي يتم إلغاؤها
+  
+  // Cache للحجوزات
+  static List<Map<String, dynamic>> _bookingsCache = [];
+  static DateTime? _lastCacheTime;
+  static const Duration _cacheExpiry = Duration(minutes: 5); // انتهاء صلاحية Cache بعد 5 دقائق
+  
+  // فحص صحة Cache
+  bool _isCacheValid() {
+    if (_bookingsCache.isEmpty || _lastCacheTime == null) {
+      return false;
+    }
+    
+    final now = DateTime.now();
+    final cacheAge = now.difference(_lastCacheTime!);
+    
+    return cacheAge < _cacheExpiry;
+  }
+  
+  // مسح Cache
+  static void clearBookingsCache() {
+    _bookingsCache.clear();
+    _lastCacheTime = null;
+    print('تم مسح Cache الحجوزات');
+  }
 
   @override
   void initState() {
@@ -53,11 +73,23 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
       return;
     }
 
+    // فحص Cache أولاً
+    if (_isCacheValid()) {
+      print('استخدام Cache للحجوزات - تحميل فوري');
+      setState(() {
+        _bookings = List.from(_bookingsCache);
+        _isLoading = false;
+      });
+      return;
+    }
+
     try {
       setState(() {
         _isLoading = true;
       });
 
+      print('تحميل الحجوزات من قاعدة البيانات...');
+      
       // استخدام استعلام محسن للحصول على الحجوزات بشكل أسرع
       // البحث في المرافق المتاحة فقط
       final facilitiesSnapshot = await FirebaseFirestore.instance
@@ -86,6 +118,11 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
         if (dateB == null) return -1;
         return dateB.compareTo(dateA);
       });
+
+      // حفظ في Cache
+      _bookingsCache = List.from(allBookings);
+      _lastCacheTime = DateTime.now();
+      print('تم حفظ ${allBookings.length} حجز في Cache');
 
       setState(() {
         _bookings = allBookings;
@@ -225,12 +262,11 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
   }
 
   String _getStatusText(Map<String, dynamic> booking) {
-    // Check if booking is confirmed
-    final isConfirmed = booking['isConfirmed'] ?? false;
-    
-    if (!isConfirmed) {
-      return 'في انتظار التأكيد';
-    }
+    // حالة "في انتظار التأكيد" معلقة حالياً حسب طلب المستخدم
+    // final isConfirmed = booking['isConfirmed'] ?? false;
+    // if (!isConfirmed) {
+    //   return 'في انتظار التأكيد';
+    // }
     
     final bookingDate = DateTime.tryParse(booking['date'] ?? '');
     if (bookingDate == null) return 'غير محدد';
@@ -304,11 +340,14 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
             .delete()
             .timeout(const Duration(seconds: 5));
 
-        // إزالة الحجز من القائمة المحلية بدلاً من إعادة تحميل جميع الحجوزات
+        // إزالة الحجز من القائمة المحلية ومسح Cache
         setState(() {
           _bookings.removeWhere((b) => b['id'] == bookingId);
           _cancellingBookings.remove(bookingId);
         });
+        
+        // مسح Cache لضمان تحديث البيانات
+        clearBookingsCache();
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -331,6 +370,9 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
     }
   }
 
+  // دالة تأجيل الحجز - معلقة حالياً حسب طلب المستخدم
+  // يمكن إعادة تفعيلها لاحقاً إذا لزم الأمر
+  /*
   Future<void> _rescheduleBooking(Map<String, dynamic> booking) async {
     try {
       // جلب جدول عمل الطبيب
@@ -390,6 +432,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
       );
     }
   }
+  */
 
   @override
   Widget build(BuildContext context) {
@@ -407,6 +450,22 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
               fontSize: 30,
             ),
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Color(0xFF2FBDAF)),
+              onPressed: () {
+                clearBookingsCache();
+                _fetchBookings();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('تم تحديث الحجوزات'),
+                    duration: Duration(seconds: 1),
+                    backgroundColor: Color(0xFF2FBDAF),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
         body: SafeArea(
           child: Column(
@@ -502,6 +561,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 elevation: 4,
+                                color: status == 'منتهي' ? Colors.red.withOpacity(0.1) : Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -525,7 +585,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  'د. ${booking['doctorName']}',
+                                                  'د. ${booking['doctorName']} (${booking['specializationName']})',
                                                   style: TextStyle(
                                                     fontSize: 16,
                                                     color: Colors.grey[600],
@@ -554,7 +614,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 12),
+                                      const SizedBox(height: 8),
                                       Row(
                                         children: [
                                           Icon(Icons.location_on, size: 16, color: Colors.grey[600]),
@@ -570,21 +630,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 8),
-                                      Row(
-                                        children: [
-                                          Icon(Icons.medical_services, size: 16, color: Colors.grey[600]),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            booking['specializationName'],
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.grey[600],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 4),
                                       Row(
                                         children: [
                                           Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
@@ -608,62 +654,56 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                           ),
                                         ],
                                       ),
-                                      const SizedBox(height: 12),
-                                      // Action buttons
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: OutlinedButton.icon(
-                                              onPressed: () => _rescheduleBooking(booking),
-                                              icon: const Icon(Icons.schedule, size: 16, color: Color(0xFF2FBDAF)),
-                                              label: const Text('تأجيل'),
-                                              style: OutlinedButton.styleFrom(
-                                                foregroundColor: const Color(0xFF2FBDAF),
-                                                side: const BorderSide(color: Color(0xFF2FBDAF)),
+                                      // Action buttons - إخفاء الأزرار للحجوزات المنتهية
+                                      if (status != 'منتهي') ...[
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            // زر PDF (على اليمين)
+                                            Expanded(
+                                              child: OutlinedButton.icon(
+                                                onPressed: () => _generatePdfForBooking(booking),
+                                                icon: const Icon(Icons.picture_as_pdf, size: 16, color: Colors.black),
+                                                label: const Text('PDF'),
+                                                style: OutlinedButton.styleFrom(
+                                                  foregroundColor: Colors.black,
+                                                  side: const BorderSide(color: Colors.black),
+                                                  backgroundColor: Colors.white,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: OutlinedButton.icon(
-                                              onPressed: () => _generatePdfForBooking(booking),
-                                              icon: const Icon(Icons.picture_as_pdf, size: 16, color: Colors.orange),
-                                              label: const Text('PDF'),
-                                              style: OutlinedButton.styleFrom(
-                                                foregroundColor: Colors.orange,
-                                                side: const BorderSide(color: Colors.orange),
+                                            const SizedBox(width: 8),
+                                            // زر إلغاء الحجز (على اليسار)
+                                            Expanded(
+                                              child: OutlinedButton.icon(
+                                                onPressed: _cancellingBookings.contains(booking['id'])
+                                                    ? null
+                                                    : () => _cancelBooking(booking),
+                                                icon: _cancellingBookings.contains(booking['id'])
+                                                    ? const SizedBox(
+                                                        width: 16,
+                                                        height: 16,
+                                                        child: CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                          color: Colors.black,
+                                                        ),
+                                                      )
+                                                    : const Icon(Icons.close, size: 16, color: Colors.black),
+                                                label: Text(
+                                                  _cancellingBookings.contains(booking['id'])
+                                                      ? 'جاري الإلغاء...'
+                                                      : 'إلغاء',
+                                                ),
+                                                style: OutlinedButton.styleFrom(
+                                                  foregroundColor: Colors.black,
+                                                  side: const BorderSide(color: Colors.black),
+                                                  backgroundColor: Colors.white,
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: OutlinedButton.icon(
-                                              onPressed: _cancellingBookings.contains(booking['id'])
-                                                  ? null
-                                                  : () => _cancelBooking(booking),
-                                              icon: _cancellingBookings.contains(booking['id'])
-                                                  ? const SizedBox(
-                                                      width: 16,
-                                                      height: 16,
-                                                      child: CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: Colors.red,
-                                                      ),
-                                                    )
-                                                  : const Icon(Icons.cancel, size: 16, color: Colors.red),
-                                              label: Text(
-                                                _cancellingBookings.contains(booking['id'])
-                                                    ? 'جاري الإلغاء...'
-                                                    : 'إلغاء',
-                                              ),
-                                              style: OutlinedButton.styleFrom(
-                                                foregroundColor: Colors.red,
-                                                side: const BorderSide(color: Colors.red),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                          ],
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -775,52 +815,6 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
     }
   }
 
-  void _sharePdfData(Uint8List pdfData) async {
-    try {
-      // استخدام path_provider للحصول على مجلد مؤقت
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/booking_${DateTime.now().millisecondsSinceEpoch}.pdf');
-      await tempFile.writeAsBytes(pdfData);
-      
-      print('تم حفظ PDF في: ${tempFile.path}');
-      
-      Share.shareXFiles(
-        [XFile(tempFile.path)],
-        text: 'تأكيد الحجز الطبي',
-      );
-    } catch (e) {
-      print('خطأ في مشاركة PDF: $e');
-      _showDialog("خطأ", "حدث خطأ في مشاركة PDF: ${e.toString()}");
-    }
-  }
-
-  void _openPdfData(Uint8List pdfData) async {
-    try {
-      // استخدام path_provider للحصول على مجلد مؤقت
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/booking_${DateTime.now().millisecondsSinceEpoch}.pdf');
-      await tempFile.writeAsBytes(pdfData);
-      
-      print('تم حفظ PDF في: ${tempFile.path}');
-      
-      // استخدام open_file لفتح PDF
-      final result = await OpenFile.open(tempFile.path);
-      
-      if (result.type != ResultType.done) {
-        _showDialog("خطأ", "لا يمكن فتح الملف: ${result.message}");
-      }
-    } catch (e) {
-      print('خطأ في فتح PDF: $e');
-      _showDialog("خطأ", "حدث خطأ في فتح PDF: ${e.toString()}");
-    }
-  }
-
-  void _sharePdf(File pdfFile) {
-    Share.shareXFiles(
-      [XFile(pdfFile.path)],
-      text: 'تأكيد الحجز الطبي',
-    );
-  }
 
   void _openPdf(File pdfFile) async {
     try {
