@@ -109,14 +109,22 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
       // انتظار جميع العمليات في نفس الوقت
       await Future.wait(futures);
 
-      // ترتيب الحجوزات حسب التاريخ (الأحدث أولاً)
+      // ترتيب الحجوزات حسب التاريخ والوقت (الأحدث أولاً)
       allBookings.sort((a, b) {
         final dateA = DateTime.tryParse(a['date'] ?? '');
         final dateB = DateTime.tryParse(b['date'] ?? '');
         if (dateA == null && dateB == null) return 0;
         if (dateA == null) return 1;
         if (dateB == null) return -1;
-        return dateB.compareTo(dateA);
+        
+        // إذا كان التاريخ نفسه، قارن بالوقت
+        if (dateA.year == dateB.year && dateA.month == dateB.month && dateA.day == dateB.day) {
+          final timeA = a['time'] ?? '';
+          final timeB = b['time'] ?? '';
+          return timeB.compareTo(timeA); // الأحدث أولاً
+        }
+        
+        return dateB.compareTo(dateA); // الأحدث أولاً
       });
 
       // حفظ في Cache
@@ -585,7 +593,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        'د. ${booking['doctorName']} (${booking['specializationName']})',
+                                        '${booking['doctorName']} (${booking['specializationName']})',
                                         style: TextStyle(
                                                     fontSize: 16,
                                           color: Colors.grey[600],

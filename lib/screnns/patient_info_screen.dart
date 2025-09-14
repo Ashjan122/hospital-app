@@ -4,10 +4,9 @@ import 'package:intl/intl.dart' as intl;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hospital_app/screnns/patient_bookings_screen.dart';
 import 'package:hospital_app/services/syncfusion_pdf_service.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
 import 'dart:io';
-import 'dart:typed_data';
 
 class PatientInfoScreen extends StatefulWidget {
   final String facilityId;
@@ -275,6 +274,12 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
   }
 
   Future<void> confirmBooking() async {
+    print('TEST: بدء تأكيد الحجز');
+    print('=== بدء تأكيد الحجز ===');
+    print('اسم المريض: $patientName');
+    print('رقم الهاتف: $patientPhone');
+    print('التاريخ المحدد: ${widget.selectedDate}');
+    print('الفترة المحددة: ${widget.selectedShift}');
     
     if (patientName == null ||
         patientName!.isEmpty ||
@@ -284,21 +289,21 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       return;
     }
 
-    // التحقق من الاسم الرباعي
+    // التحقق من الاسم الثلاثي
     List<String> nameParts = patientName!.trim().split(' ').where((part) => part.isNotEmpty).toList();
-    if (nameParts.length != 4) {
-      _showDialog("تنبيه", "يرجى إدخال الاسم الرباعي (4 أسماء)");
+    if (nameParts.length != 3) {
+      _showDialog("تنبيه", "يرجى إدخال الاسم الثلاثي (3 أسماء)");
       return;
     }
     
-    // التحقق من رقم الهاتف (10 أرقام)
+    // التحقق من رقم الهاتف (يجب أن يحتوي على أرقام فقط)
     String phoneDigits = patientPhone!.replaceAll(RegExp(r'[^0-9]'), '');
-    if (phoneDigits.length != 10) {
-      _showDialog("تنبيه", "رقم الهاتف يجب أن يكون 10 أرقام");
+    if (phoneDigits.isEmpty) {
+      _showDialog("تنبيه", "يرجى إدخال رقم هاتف صحيح");
       return;
     }
 
-    // التحقق من عدم وجود حجز سابق لنفس الشخص في نفس اليوم (بالاسم الرباعي فقط)
+    // التحقق من عدم وجود حجز سابق لنفس الشخص في نفس اليوم (بالاسم الثلاثي فقط)
     final checkDateStr = intl.DateFormat('yyyy-MM-dd').format(widget.selectedDate);
     final existingBooking = await FirebaseFirestore.instance
         .collection('medicalFacilities')
@@ -423,9 +428,9 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       showBookingSuccess = true;
     });
 
-    final actionText = widget.isReschedule ? "تم تأجيل الحجز" : "تم الحجز";
     
     // توليد PDF للحجز
+    print('=== بدء توليد PDF من confirmBooking ===');
     await _generateBookingPdf(
       dateStr: dateStr,
       availableTime: availableTime,
@@ -443,9 +448,11 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       _phoneController.clear();
     });
 
-    _showDialog(
-      actionText,
-      "تم الحجز بتاريخ $dateStr الساعة $availableTime (${period == 'morning' ? 'صباحاً' : 'مساءً'})",
+    _showBookingConfirmationDialog(
+      dateStr: dateStr,
+      availableTime: availableTime,
+      period: period,
+      bookingId: bookingId,
     );
   }
 
@@ -479,19 +486,6 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     }
   }
 
-  String _getConfirmationDayText() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final bookingDate = DateTime(widget.selectedDate.year, widget.selectedDate.month, widget.selectedDate.day);
-    
-    if (bookingDate.isAtSameMomentAs(today)) {
-      return "اليوم";
-    } else if (bookingDate.isAfter(today)) {
-      return "غداً";
-    } else {
-      return "اليوم";
-    }
-  }
 
   Future<void> _generateBookingPdf({
     required String dateStr,
@@ -500,6 +494,13 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     required String bookingId,
   }) async {
     try {
+      print('TEST: بدء إنشاء PDF');
+      print('=== بدء إنشاء PDF ===');
+      print('التاريخ: $dateStr');
+      print('الوقت المتاح: $availableTime');
+      print('الفترة: $period');
+      print('معرف الحجز: $bookingId');
+      
       // التحقق من وجود البيانات المطلوبة
       if (patientName == null || patientName!.isEmpty) {
         throw Exception('اسم المريض مطلوب');
@@ -509,7 +510,62 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         throw Exception('رقم الهاتف مطلوب');
       }
 
-              await SyncfusionPdfService.generateBookingPdf(
+      // جلب وقت بداية الفترة من جدول العمل
+      String? periodStartTime;
+      try {
+        final dayName = intl.DateFormat('EEEE', 'ar').format(widget.selectedDate).trim();
+        
+        // محاولة أسماء الأيام المختلفة
+        String? alternativeDayName;
+        switch (widget.selectedDate.weekday) {
+          case 1:
+            alternativeDayName = 'الاثنين';
+            break;
+          case 2:
+            alternativeDayName = 'الثلاثاء';
+            break;
+          case 3:
+            alternativeDayName = 'الأربعاء';
+            break;
+          case 4:
+            alternativeDayName = 'الخميس';
+            break;
+          case 5:
+            alternativeDayName = 'الجمعة';
+            break;
+          case 6:
+            alternativeDayName = 'السبت';
+            break;
+          case 7:
+            alternativeDayName = 'الأحد';
+            break;
+        }
+        print('اسم اليوم: $dayName');
+        print('الفترة: $period');
+        print('جدول العمل: ${widget.workingSchedule}');
+        
+        var schedule = widget.workingSchedule[dayName];
+        print('جدول اليوم: $schedule');
+        
+        // إذا لم يجد الجدول، جرب الاسم البديل
+        if (schedule == null && alternativeDayName != null) {
+          print('جرب الاسم البديل: $alternativeDayName');
+          schedule = widget.workingSchedule[alternativeDayName];
+          print('جدول اليوم البديل: $schedule');
+        }
+        
+        if (schedule != null && schedule[period] != null) {
+          periodStartTime = schedule[period]['start'];
+          print('وقت بداية الفترة: $periodStartTime');
+        } else {
+          print('لم يتم العثور على جدول للفترة $period في يوم $dayName أو $alternativeDayName');
+        }
+      } catch (e) {
+        print('خطأ في جلب وقت بداية الفترة: $e');
+      }
+
+      // إنشاء PDF وحفظه باسم محدد
+      final pdfData = await SyncfusionPdfService.generateBookingPdfData(
         facilityName: facilityName ?? 'مركز طبي',
         specializationName: specializationName ?? 'تخصص طبي',
         doctorName: doctorName ?? 'طبيب',
@@ -519,8 +575,15 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         bookingTime: availableTime,
         period: period,
         bookingId: bookingId,
+        periodStartTime: periodStartTime,
       );
       
+      // حفظ PDF في مجلد مؤقت
+      final tempDir = await getTemporaryDirectory();
+      final pdfFile = File('${tempDir.path}/booking_$bookingId.pdf');
+      await pdfFile.writeAsBytes(pdfData);
+      
+      print('=== تم إنشاء PDF بنجاح ===');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -543,59 +606,260 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     }
   }
 
-  void _sharePdfData(Uint8List pdfData) async {
+
+
+  Future<void> _viewBookingPdf(String bookingId) async {
     try {
-      // استخدام path_provider للحصول على مجلد مؤقت
+      // البحث عن ملف PDF المحفوظ
       final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/booking_${DateTime.now().millisecondsSinceEpoch}.pdf');
-      await tempFile.writeAsBytes(pdfData);
+      final pdfFile = File('${tempDir.path}/booking_$bookingId.pdf');
       
-      print('تم حفظ PDF في: ${tempFile.path}');
-      
-      Share.shareXFiles(
-        [XFile(tempFile.path)],
-        text: 'تأكيد الحجز الطبي',
-      );
+      if (await pdfFile.exists()) {
+        // فتح ملف PDF باستخدام open_file
+        await OpenFile.open(pdfFile.path);
+      } else {
+        // إذا لم يوجد الملف، قم بإنشاؤه مرة أخرى
+        if (patientName != null && patientPhone != null) {
+          await _generateBookingPdf(
+            dateStr: intl.DateFormat('yyyy-MM-dd').format(widget.selectedDate),
+            availableTime: selectedTime ?? '12:00',
+            period: widget.selectedShift ?? 'morning',
+            bookingId: bookingId,
+          );
+          
+          // محاولة فتح الملف مرة أخرى
+          if (await pdfFile.exists()) {
+            await OpenFile.open(pdfFile.path);
+          } else {
+            throw Exception('فشل في إنشاء ملف PDF');
+          }
+        } else {
+          throw Exception('بيانات المريض غير متوفرة');
+        }
+      }
     } catch (e) {
-      print('خطأ في مشاركة PDF: $e');
+      print('خطأ في عرض PDF: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('خطأ في مشاركة PDF: ${e.toString()}'),
+            content: Text('خطأ في عرض ملف PDF: ${e.toString()}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
     }
   }
 
-  void _sharePdf(File pdfFile) {
-    Share.shareXFiles(
-      [XFile(pdfFile.path)],
-      text: 'تأكيد الحجز الطبي',
-    );
-  }
-
   void _showDialog(String title, String message) {
     showDialog(
       context: context,
-      builder:
-          (ctx) => AlertDialog(
-            title: Center(
-              child: Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-            content: Text(message, textAlign: TextAlign.center),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: Text("موافق", style: TextStyle(fontSize: 16)),
+      builder: (ctx) => AlertDialog(
+        title: Center(
+          child: Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        content: Text(message, textAlign: TextAlign.center),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text("موافق", style: TextStyle(fontSize: 16)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBookingConfirmationDialog({
+    required String dateStr,
+    required String availableTime,
+    required String period,
+    required String bookingId,
+  }) {
+    // تنسيق التاريخ والوقت
+    final date = DateTime.parse(dateStr);
+    final dayName = intl.DateFormat('EEEE', 'ar').format(date);
+    final formattedDate = intl.DateFormat('yyyy-MM-dd').format(date);
+    
+    // تحويل الوقت إلى 12 ساعة
+    final timeParts = availableTime.split(':');
+    final hour = int.parse(timeParts[0]);
+    final minute = timeParts[1];
+    final periodText = period == 'morning' ? 'صباحاً' : 'مساءً';
+    
+    String displayTime;
+    if (hour == 0) {
+      displayTime = '12:$minute $periodText';
+    } else if (hour < 12) {
+      displayTime = '$hour:$minute $periodText';
+    } else if (hour == 12) {
+      displayTime = '12:$minute $periodText';
+    } else {
+      displayTime = '${hour - 12}:$minute $periodText';
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // عنوان التأكيد
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text(
+                  'تم الحجز',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF2FBDAF),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              
+              // تفاصيل الحجز
+              Column(
+                children: [
+                  RichText(
+                    text: TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'يوم ',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                        TextSpan(
+                          text: dayName,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  RichText(
+                    text: TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'بتاريخ ',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black,
+                          ),
+                        ),
+                        TextSpan(
+                          text: formattedDate,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  RichText(
+                    text: TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'الساعة ',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black,
+                          ),
+                        ),
+                        TextSpan(
+                          text: displayTime,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 20),
+              
+              // الأزرار - زرين فقط في الديالوج
+              Row(
+                children: [
+                  // زر PDF
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await _viewBookingPdf(bookingId);
+                      },
+                      icon: Icon(Icons.picture_as_pdf, color: Colors.white, size: 16),
+                      label: Text('PDF', style: TextStyle(fontSize: 14)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2FBDAF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  
+                  // زر موافق
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2FBDAF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        'موافق',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+        ),
+      ),
     );
   }
 
@@ -736,11 +1000,11 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                         
 
                         
-                        // حقل الاسم الرباعي
+                        // حقل الاسم الثلاثي
                         TextFormField(
                           decoration: InputDecoration(
-                            labelText: 'الاسم الرباعي *',
-                            hintText: 'الاسم الأول - اسم الأب - اسم الجد - اسم العائلة',
+                            labelText: 'الاسم الثلاثي *',
+                            hintText: 'الاسم الأول - اسم الأب - اسم العائلة',
                             border: OutlineInputBorder(),
                             prefixIcon: Icon(Icons.person, color: const Color(0xFF2FBDAF)),
                             focusedBorder: OutlineInputBorder(
@@ -753,13 +1017,13 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                           controller: _nameController,
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال الاسم الرباعي';
+                              return 'يرجى إدخال الاسم الثلاثي';
                             }
                             
                             List<String> nameParts = value.trim().split(' ').where((part) => part.isNotEmpty).toList();
                             
-                            if (nameParts.length != 4) {
-                              return 'يرجى إدخال الاسم الرباعي (4 أسماء)';
+                            if (nameParts.length != 3) {
+                              return 'يرجى إدخال الاسم الثلاثي (3 أسماء)';
                             }
                             
                             return null;
@@ -771,7 +1035,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                         TextFormField(
                           decoration: InputDecoration(
                             labelText: 'رقم الهاتف *',
-                            hintText: '01XXXXXXXX أو 09XXXXXXXX',
+                            hintText: 'أدخل رقم الهاتف',
                             border: OutlineInputBorder(),
                             prefixIcon: Icon(Icons.phone, color: const Color(0xFF2FBDAF)),
                             focusedBorder: OutlineInputBorder(
@@ -789,8 +1053,8 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                             }
                             
                             String phoneDigits = value.replaceAll(RegExp(r'[^0-9]'), '');
-                            if (phoneDigits.length != 10) {
-                              return 'رقم الهاتف يجب أن يكون 10 أرقام';
+                            if (phoneDigits.isEmpty) {
+                              return 'يرجى إدخال رقم هاتف صحيح';
                             }
                             
                             return null;
@@ -811,7 +1075,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                           ),
                         ),
                         child: Text(
-                          widget.isReschedule ? "تأكيد التأجيل" : "تأكيد الحجز",
+                          widget.isReschedule ? "تأكيد التأجيل" : "حجز الآن",
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -834,26 +1098,6 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                           ),
                           child: Column(
                             children: [
-                              RichText(
-                                textAlign: TextAlign.center,
-                                text: TextSpan(
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                  ),
-                                  children: [
-                                    const TextSpan(text: "سيتم تأكيد الحجز عبر رسالة نصية "),
-                                    TextSpan(
-                                      text: _getConfirmationDayText(),
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
                               const Text(
                                 "الانتقال إلى:",
                                 style: TextStyle(
