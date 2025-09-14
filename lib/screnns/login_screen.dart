@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/patient_home_screen.dart';
 import 'package:hospital_app/screnns/register_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:ui' as ui;
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -136,6 +134,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 
                 // Save patient login data
                 await _saveLoginData('patient', userEmail: searchPhoneNumber, userName: patientName, userId: patientId);
+                
+                // Save phone number separately for lab results
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('userPhone', searchPhoneNumber);
                 
                 // Save FCM token for patient
                 await _saveFCMTokenForPatient(patientId);

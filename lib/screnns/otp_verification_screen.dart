@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hospital_app/services/sms_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
 class OTPVerificationScreen extends StatefulWidget {
@@ -220,6 +221,10 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         'isActive': true,
         'verified': true, // Mark as verified
       });
+
+      // Save phone number in SharedPreferences for lab results
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('userPhone', widget.phoneNumber);
 
       if (mounted) {
         // Navigate back to login screen

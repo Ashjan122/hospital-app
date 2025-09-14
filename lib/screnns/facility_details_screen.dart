@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/specialties_screen.dart';
 import 'package:hospital_app/screnns/insurance_companies_screen.dart';
+import 'package:hospital_app/screnns/lab_results_screen.dart';
 
 class FacilityDetailsScreen extends StatefulWidget {
   final String facilityId;
@@ -90,6 +91,25 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                             );
                           },
                         ),
+                        
+                        // Laboratory Results Card - تظهر فقط في مركز الرومي الطبي (وليس طب الأسنان)
+                        if (widget.facilityName.contains('الرومي الطبي') && !widget.facilityName.contains('طب الأسنان')) ...[
+                          const SizedBox(height: 16),
+                          _buildCard(
+                            title: "نتيجة المختبر",
+                            subtitle: "عرض نتائج الفحوصات المخبرية",
+                            icon: Icons.science,
+                            color: Colors.orange,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const LabResultsScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ],
                     ),
                   ),

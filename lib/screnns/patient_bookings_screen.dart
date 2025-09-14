@@ -22,7 +22,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
   bool _isLoading = true;
   String _selectedFilter = 'all'; // all, today, upcoming, past
   Set<String> _cancellingBookings = {}; // لتتبع الحجوزات التي يتم إلغاؤها
-  
+
   // Cache للحجوزات
   static List<Map<String, dynamic>> _bookingsCache = [];
   static DateTime? _lastCacheTime;
@@ -89,7 +89,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
       });
 
       print('تحميل الحجوزات من قاعدة البيانات...');
-      
+
       // استخدام استعلام محسن للحصول على الحجوزات بشكل أسرع
       // البحث في المرافق المتاحة فقط
       final facilitiesSnapshot = await FirebaseFirestore.instance
@@ -475,8 +475,8 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                 padding: const EdgeInsets.all(16),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
+                child: Row(
+                  children: [
                       FilterChip(
                         label: Text('الكل'),
                         selected: _selectedFilter == 'all',
@@ -485,8 +485,8 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                             _selectedFilter = 'all';
                           });
                         },
-                      ),
-                      const SizedBox(width: 8),
+                    ),
+                    const SizedBox(width: 8),
                       FilterChip(
                         label: Text('اليوم'),
                         selected: _selectedFilter == 'today',
@@ -495,8 +495,8 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                             _selectedFilter = 'today';
                           });
                         },
-                      ),
-                      const SizedBox(width: 8),
+                    ),
+                    const SizedBox(width: 8),
                       FilterChip(
                         label: Text('القادمة'),
                         selected: _selectedFilter == 'upcoming',
@@ -505,8 +505,8 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                             _selectedFilter = 'upcoming';
                           });
                         },
-                      ),
-                      const SizedBox(width: 8),
+                    ),
+                    const SizedBox(width: 8),
                       FilterChip(
                         label: Text('المنتهية'),
                         selected: _selectedFilter == 'past',
@@ -576,20 +576,20 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                             child: Column(
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
-                                                Text(
-                                                  booking['patientName'] ?? 'غير محدد',
-                                                  style: const TextStyle(
+                                      Text(
+                                        booking['patientName'] ?? 'غير محدد',
+                                        style: const TextStyle(
                                                     fontSize: 18,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  'د. ${booking['doctorName']} (${booking['specializationName']})',
-                                                  style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'د. ${booking['doctorName']} (${booking['specializationName']})',
+                                        style: TextStyle(
                                                     fontSize: 16,
-                                                    color: Colors.grey[600],
-                                                  ),
+                                          color: Colors.grey[600],
+                                        ),
                                                 ),
                                               ],
                                             ),
@@ -657,52 +657,52 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                       // Action buttons - إخفاء الأزرار للحجوزات المنتهية
                                       if (status != 'منتهي') ...[
                                         const SizedBox(height: 8),
-                                        Row(
-                                          children: [
+                                      Row(
+                                        children: [
                                             // زر PDF (على اليمين)
-                                            Expanded(
-                                              child: OutlinedButton.icon(
-                                                onPressed: () => _generatePdfForBooking(booking),
+                                          Expanded(
+                                            child: OutlinedButton.icon(
+                                              onPressed: () => _generatePdfForBooking(booking),
                                                 icon: const Icon(Icons.picture_as_pdf, size: 16, color: Colors.black),
-                                                label: const Text('PDF'),
-                                                style: OutlinedButton.styleFrom(
+                                              label: const Text('PDF'),
+                                              style: OutlinedButton.styleFrom(
                                                   foregroundColor: Colors.black,
                                                   side: const BorderSide(color: Colors.black),
-                                                  backgroundColor: Colors.white,
-                                                ),
+                                                backgroundColor: Colors.white,
                                               ),
                                             ),
-                                            const SizedBox(width: 8),
+                                          ),
+                                          const SizedBox(width: 8),
                                             // زر إلغاء الحجز (على اليسار)
-                                            Expanded(
-                                              child: OutlinedButton.icon(
-                                                onPressed: _cancellingBookings.contains(booking['id'])
-                                                    ? null
-                                                    : () => _cancelBooking(booking),
-                                                icon: _cancellingBookings.contains(booking['id'])
-                                                    ? const SizedBox(
-                                                        width: 16,
-                                                        height: 16,
-                                                        child: CircularProgressIndicator(
-                                                          strokeWidth: 2,
+                                          Expanded(
+                                            child: OutlinedButton.icon(
+                                              onPressed: _cancellingBookings.contains(booking['id'])
+                                                  ? null
+                                                  : () => _cancelBooking(booking),
+                                              icon: _cancellingBookings.contains(booking['id'])
+                                                  ? const SizedBox(
+                                                      width: 16,
+                                                      height: 16,
+                                                      child: CircularProgressIndicator(
+                                                        strokeWidth: 2,
                                                           color: Colors.black,
-                                                        ),
-                                                      )
-                                                    : const Icon(Icons.close, size: 16, color: Colors.black),
-                                                label: Text(
-                                                  _cancellingBookings.contains(booking['id'])
-                                                      ? 'جاري الإلغاء...'
-                                                      : 'إلغاء',
-                                                ),
-                                                style: OutlinedButton.styleFrom(
-                                                  foregroundColor: Colors.black,
-                                                  side: const BorderSide(color: Colors.black),
-                                                  backgroundColor: Colors.white,
-                                                ),
+                                                      ),
+                                                    )
+                                                  : const Icon(Icons.close, size: 16, color: Colors.black),
+                                              label: Text(
+                                                _cancellingBookings.contains(booking['id'])
+                                                    ? 'جاري الإلغاء...'
+                                                    : 'إلغاء',
+                                              ),
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: Colors.black,
+                                                side: const BorderSide(color: Colors.black),
+                                                backgroundColor: Colors.white,
                                               ),
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                        ],
+                                      ),
                                       ],
                                     ],
                                   ),
