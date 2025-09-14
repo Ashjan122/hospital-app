@@ -179,6 +179,7 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                           builder: (context) => DoctorsScreen(
                             facilityId: widget.facilityId,
                             specId: specId,
+                            specializationName: specName,
                           ),
                         ),
                       );

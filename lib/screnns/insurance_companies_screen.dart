@@ -107,7 +107,6 @@ class _InsuranceCompaniesScreenState extends State<InsuranceCompaniesScreen> {
                     final company = companies[index].data() as Map<String, dynamic>;
                     final name = company['name'] ?? '';
                     final description = company['description'] ?? '';
-                    final phone = company['phone'] ?? '';
                     final isActive = company['isActive'] ?? true;
 
                     return Container(
@@ -198,26 +197,6 @@ class _InsuranceCompaniesScreenState extends State<InsuranceCompaniesScreen> {
                                   ),
                               ],
                             ),
-                            if (phone.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.phone,
-                                    size: 16,
-                                    color: Colors.grey[600],
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    phone,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
                           ],
                         ),
                       ),

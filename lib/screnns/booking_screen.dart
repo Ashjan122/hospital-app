@@ -3,6 +3,7 @@ import 'package:hospital_app/screnns/patient_info_screen.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class BookingScreen extends StatefulWidget {
   final String name;
@@ -309,9 +310,13 @@ class _BookingScreenState extends State<BookingScreen> {
           .doc(widget.doctorId)
           .get();
       if (doc.exists) {
+        final data = doc.data();
+        print('DEBUG: تم تحميل بيانات الطبيب: $data');
         setState(() {
-          _doctorData = doc.data();
+          _doctorData = data;
         });
+      } else {
+        print('DEBUG: وثيقة الطبيب غير موجودة');
       }
     } catch (e) {
       print('خطأ في تحميل بيانات الطبيب: $e');
@@ -400,23 +405,15 @@ class _BookingScreenState extends State<BookingScreen> {
     
     // التحقق من أن التاريخ هو اليوم الحالي أو الغد
     if (selectedDateStr == todayStr) {
-      // اليوم الحالي - نتحقق من أن له جدول عمل وأن الفترات صالحة
+      // اليوم الحالي - الحجز متاح فقط للفترة المسائية
       final dayName = intl.DateFormat('EEEE', 'ar').format(today).trim();
       final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
       
       if (schedule == null) return false;
       
-      final morning = schedule['morning'] as Map<String, dynamic>?;
       final evening = schedule['evening'] as Map<String, dynamic>?;
       
-      // التحقق من الفترة الصباحية
-      if (morning != null && morning.isNotEmpty) {
-        if (_isPeriodValid(morning, 'morning')) {
-          return true;
-        }
-      }
-      
-      // التحقق من الفترة المسائية
+      // التحقق من الفترة المسائية فقط
       if (evening != null && evening.isNotEmpty) {
         if (_isPeriodValid(evening, 'evening')) {
           return true;
@@ -462,37 +459,22 @@ class _BookingScreenState extends State<BookingScreen> {
     final hasMorning = morning != null && morning.isNotEmpty;
     final hasEvening = evening != null && evening.isNotEmpty;
     
-    // إذا كان هناك فترة واحدة فقط
-    if (hasMorning && !hasEvening) {
+    // إذا كان اليوم الحالي
       if (isToday) {
-        return _isPeriodValid(morning, 'morning') ? 'morning' : null;
-      } else {
-        return 'morning';
-      }
-    } else if (!hasMorning && hasEvening) {
-      if (isToday) {
-        return _isPeriodValid(evening, 'evening') ? 'evening' : null;
-      } else {
+      // اليوم الحالي - الحجز متاح فقط للفترة المسائية
+      if (hasEvening && _isPeriodValid(evening, 'evening')) {
         return 'evening';
       }
-    } else if (hasMorning && hasEvening) {
-      // إذا كان هناك فترتين
-      if (isToday) {
-        final isMorningValid = _isPeriodValid(morning, 'morning');
-        final isEveningValid = _isPeriodValid(evening, 'evening');
-        
-        if (isMorningValid && isEveningValid) {
-          // الفترتان صالحتان - نختار الصباحية افتراضياً
-          return 'morning';
-        } else if (isMorningValid) {
-          return 'morning';
-        } else if (isEveningValid) {
-          return 'evening';
-        } else {
-          return null; // لا توجد فترة صالحة
-        }
+      return null; // لا توجد فترة مسائية صالحة
       } else {
-        // الغد - لا نحدد فترة، نترك المستخدم يختار
+      // الغد وما بعده - نطبق المنطق العادي
+      // إذا كان هناك فترة واحدة فقط
+      if (hasMorning && !hasEvening) {
+        return 'morning';
+    } else if (!hasMorning && hasEvening) {
+        return 'evening';
+    } else if (hasMorning && hasEvening) {
+        // إذا كان هناك فترتين - لا نحدد فترة، نترك المستخدم يختار
         return null;
       }
     }
@@ -508,9 +490,6 @@ class _BookingScreenState extends State<BookingScreen> {
     
     if (!isToday) return null; // لا توجد رسائل للغد
     
-    // لا تظهر الرسالة إلا إذا كان المستخدم قد اختار فترة
-    if (selectedShift == null) return null;
-    
     final dayName = intl.DateFormat('EEEE', 'ar').format(date).trim();
     final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
     
@@ -522,28 +501,17 @@ class _BookingScreenState extends State<BookingScreen> {
     final hasMorning = morning != null && morning.isNotEmpty;
     final hasEvening = evening != null && evening.isNotEmpty;
     
+    // إذا كان يعمل فترة صباحية فقط
+    if (hasMorning && !hasEvening) {
+      return "الحجز متاح فقط للفترة المسائية في اليوم الحالي";
+    }
+    
+    // إذا كان يعمل فترتين
     if (hasMorning && hasEvening) {
-      // إذا كان هناك فترتين
-      final isMorningValid = _isPeriodValid(morning, 'morning');
       final isEveningValid = _isPeriodValid(evening, 'evening');
       
-      // تظهر الرسالة فقط إذا اختار المستخدم فترة منتهية
-      if (selectedShift == 'morning' && !isMorningValid && isEveningValid) {
-        return "انتهى زمن الفترة الصباحية، اختر الفترة المسائية";
-      } else if (selectedShift == 'evening' && isMorningValid && !isEveningValid) {
-        return "انتهى زمن الفترة المسائية، اختر الفترة الصباحية";
-      } else if (selectedShift == 'morning' && !isMorningValid && !isEveningValid) {
-        return "انتهى زمن جميع الفترات لهذا اليوم";
-      } else if (selectedShift == 'evening' && !isMorningValid && !isEveningValid) {
-        return "انتهى زمن جميع الفترات لهذا اليوم";
-      }
-    } else if (hasMorning && !hasEvening) {
-      if (selectedShift == 'morning' && !_isPeriodValid(morning, 'morning')) {
-        return "انتهى زمن الفترة الصباحية";
-      }
-    } else if (!hasMorning && hasEvening) {
-      if (selectedShift == 'evening' && !_isPeriodValid(evening, 'evening')) {
-        return "انتهى زمن الفترة المسائية";
+      if (!isEveningValid) {
+        return "الحجز متاح فقط للفترة المسائية في اليوم الحالي";
       }
     }
     
@@ -600,6 +568,11 @@ class _BookingScreenState extends State<BookingScreen> {
           }
         }
         
+        // اليوم الحالي - نضيفه حتى لو كان يعمل فترة صباحية فقط (للعرض فقط)
+        if (i == 0 && (morning != null && morning.isNotEmpty)) {
+          hasValidPeriod = true;
+        }
+        
         if (hasValidPeriod) {
           dates.add(day);
         }
@@ -618,6 +591,177 @@ class _BookingScreenState extends State<BookingScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: Text("موافق")),
+            ],
+          ),
+    );
+  }
+
+  // دالة للتحقق من توقف الحجز للطبيب
+  bool _isDoctorBookingDisabled() {
+    // التحقق من بيانات الطبيب
+    if (_doctorData != null) {
+      print('DEBUG: _doctorData = $_doctorData');
+      
+      // التحقق من وجود حقل يوضح توقف الحجز
+      final bookingDisabled = _doctorData!['bookingDisabled'];
+      final isBookingDisabled = _doctorData!['isBookingDisabled'];
+      final bookingSuspended = _doctorData!['bookingSuspended'];
+      final isBookingSuspended = _doctorData!['isBookingSuspended'];
+      final bookingStatus = _doctorData!['bookingStatus'];
+      final status = _doctorData!['status'];
+      final isBookingEnabled = _doctorData!['isBookingEnabled'];
+      
+      print('DEBUG: bookingDisabled = $bookingDisabled');
+      print('DEBUG: isBookingDisabled = $isBookingDisabled');
+      print('DEBUG: bookingSuspended = $bookingSuspended');
+      print('DEBUG: isBookingSuspended = $isBookingSuspended');
+      print('DEBUG: bookingStatus = $bookingStatus');
+      print('DEBUG: status = $status');
+      print('DEBUG: isBookingEnabled = $isBookingEnabled');
+      
+      final isDisabled = bookingDisabled == true || 
+                        isBookingDisabled == true || 
+                        bookingSuspended == true || 
+                        isBookingSuspended == true || 
+                        bookingStatus == 'disabled' ||
+                        bookingStatus == 'suspended' ||
+                        status == 'disabled' ||
+                        status == 'suspended' ||
+                        isBookingEnabled == false;
+      
+      print('DEBUG: isDisabled = $isDisabled');
+      return isDisabled;
+    }
+    
+    print('DEBUG: _doctorData is null');
+    return false;
+  }
+
+  // دالة لمشاركة الأيام المتاحة عبر واتساب
+  Future<void> _shareAvailableDaysOnWhatsApp() async {
+    try {
+      // إنشاء نص الأيام المتاحة
+      final availableDates = getAvailableDates();
+      
+      if (availableDates.isEmpty) {
+        _showDialog("تنبيه", "لا توجد أيام متاحة للحجز حالياً");
+        return;
+      }
+
+      String message = "📅 الأيام المتاحة للحجز مع د. ${widget.name}:\n\n";
+      
+      for (int i = 0; i < availableDates.length; i++) {
+        final date = availableDates[i];
+        final formatted = intl.DateFormat('EEEE - yyyy/MM/dd', 'ar').format(date);
+        final formattedEnglish = _toEnglishDigits(formatted);
+        
+        // تحديد الفترات المتاحة
+        final dayName = intl.DateFormat('EEEE', 'ar').format(date).trim();
+        final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
+        
+        String periods = "";
+        if (schedule != null) {
+          final morning = schedule['morning'] as Map<String, dynamic>?;
+          final evening = schedule['evening'] as Map<String, dynamic>?;
+          
+          List<String> availablePeriods = [];
+          if (morning != null && morning.isNotEmpty) {
+            availablePeriods.add("صباح");
+          }
+          if (evening != null && evening.isNotEmpty) {
+            availablePeriods.add("مساء");
+          }
+          
+          if (availablePeriods.isNotEmpty) {
+            periods = " (${availablePeriods.join(' - ')})";
+          }
+        }
+        
+        message += "${i + 1}. $formattedEnglish$periods\n";
+      }
+      
+      // محاولة فتح واتساب بطرق مختلفة
+      final encodedMessage = Uri.encodeComponent(message);
+      
+      // الطريقة الأولى: wa.me مع النص
+      final whatsappUrl = "https://wa.me/?text=$encodedMessage";
+      
+      try {
+        await launchUrl(Uri.parse(whatsappUrl), mode: LaunchMode.externalApplication);
+        return;
+      } catch (e) {
+        print('فشل wa.me: $e');
+      }
+      
+      // الطريقة الثانية: api.whatsapp.com
+      final whatsappApiUrl = "https://api.whatsapp.com/send?text=$encodedMessage";
+      
+      try {
+        await launchUrl(Uri.parse(whatsappApiUrl), mode: LaunchMode.externalApplication);
+        return;
+      } catch (e) {
+        print('فشل api.whatsapp.com: $e');
+      }
+      
+      // الطريقة الثالثة: whatsapp://
+      final whatsappScheme = "whatsapp://send?text=$encodedMessage";
+      
+      try {
+        await launchUrl(Uri.parse(whatsappScheme), mode: LaunchMode.externalApplication);
+        return;
+      } catch (e) {
+        print('فشل whatsapp://: $e');
+      }
+      
+      // الطريقة الرابعة: فتح واتساب بدون نص
+      try {
+        await launchUrl(Uri.parse("https://wa.me/"), mode: LaunchMode.externalApplication);
+        // عرض النص للنسخ
+        _showCopyDialog(message);
+        return;
+      } catch (e) {
+        print('فشل wa.me بدون نص: $e');
+      }
+      
+      // إذا فشلت جميع المحاولات
+      _showCopyDialog(message);
+      
+    } catch (e) {
+      print('خطأ عام في فتح واتساب: $e');
+      _showDialog("تنبيه", "حدث خطأ أثناء فتح واتساب");
+    }
+  }
+  
+  // دالة لعرض النص للنسخ
+  void _showCopyDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("مشاركة الأيام المتاحة"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("لا يمكن فتح واتساب مباشرة. يمكنك نسخ النص التالي ومشاركته:"),
+            SizedBox(height: 10),
+            Container(
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: SelectableText(
+                message,
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("موافق"),
+          ),
             ],
           ),
     );
@@ -690,13 +834,33 @@ class _BookingScreenState extends State<BookingScreen> {
                 ],
               )
             : Text(
-                "اختيار الموعد",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF2FBDAF),
-                  fontSize: 30,
+            "اختيار الموعد",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF2FBDAF),
+              fontSize: 30,
+            ),
+          ),
+          actions: [
+            GestureDetector(
+              onTap: _shareAvailableDaysOnWhatsApp,
+              child: Container(
+                padding: EdgeInsets.all(8),
+                child: Image.asset(
+                  'assets/images/whattsap.png',
+                  width: 24,
+                  height: 24,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Icon(
+                      Icons.message,
+                      color: Color(0xFF2FBDAF),
+                      size: 24,
+                    );
+                  },
                 ),
               ),
+            ),
+          ],
         ),
         body: SafeArea(
           child: Padding(
@@ -704,16 +868,16 @@ class _BookingScreenState extends State<BookingScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("اختر يوم من الأيام المتاحة:", style: TextStyle(fontSize: 18)),
+                Text("اختر يوم من الأيام المتاحة:", style: TextStyle(fontSize: 18)),
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.info_outline, size: 16, color: Colors.grey),
+                    const Icon(Icons.info_outline, size: 16, color: Colors.red),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'ملاحظة: الحجز متاح لليوم أو لليوم التالي فقط.',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        'ملاحظة: يمكنك الحجز في اليوم الحالي (الفترة المسائية فقط) أو الحجز لليوم التالي',
+                        style: TextStyle(fontSize: 12, color: Colors.red[600]),
                       ),
                     ),
                   ],
@@ -802,10 +966,73 @@ class _BookingScreenState extends State<BookingScreen> {
                                             if (_queuePosition != null) {
                                               final capText = _dailyCapacity != null ? _toEnglishDigits(_dailyCapacity!.toString()) : '';
                                               final text = capText.isNotEmpty ? '${_toEnglishDigits(_queuePosition!.toString())} من $capText' : _toEnglishDigits(_queuePosition!.toString());
+                                              
+                                              // تحديد الفترة والأيقونة
+                                              String periodText = "";
+                                              IconData periodIcon = Icons.access_time;
+                                              Color iconColor = Colors.blue[600]!;
+                                              
+                                              if (selectedShift != null) {
+                                                if (selectedShift == 'morning') {
+                                                  periodText = "صباح";
+                                                  periodIcon = Icons.wb_sunny;
+                                                  iconColor = Colors.orange; // أصفر للشمس
+                                                } else if (selectedShift == 'evening') {
+                                                  periodText = "مساء";
+                                                  periodIcon = Icons.nightlight_round;
+                                                  iconColor = Colors.blue[600]!;
+                                                }
+                                              } else {
+                                                // إذا لم يتم تحديد الفترة، نحددها بناءً على الجدول
+                                                final dayName = intl.DateFormat('EEEE', 'ar').format(date).trim();
+                                                final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
+                                                
+                                                if (schedule != null) {
+                                                  final morning = schedule['morning'] as Map<String, dynamic>?;
+                                                  final evening = schedule['evening'] as Map<String, dynamic>?;
+                                                  
+                                                  final hasMorning = morning != null && morning.isNotEmpty;
+                                                  final hasEvening = evening != null && evening.isNotEmpty;
+                                                  
+                                                  if (hasMorning && !hasEvening) {
+                                                    periodText = "صباح";
+                                                    periodIcon = Icons.wb_sunny;
+                                                    iconColor = Colors.orange; // أصفر للشمس
+                                                  } else if (!hasMorning && hasEvening) {
+                                                    periodText = "مساء";
+                                                    periodIcon = Icons.nightlight_round;
+                                                    iconColor = Colors.blue[600]!;
+                                                  }
+                                                }
+                                              }
+                                              
                                               return Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                                 decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue[200]!),),
-                                                child: Text(text, style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600, fontSize: 12),),
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    if (periodText.isNotEmpty)
+                                                      Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(periodIcon, size: 12, color: iconColor),
+                                                          SizedBox(width: 2),
+                                                          Text(
+                                                            periodText,
+                                                            style: TextStyle(
+                                                              color: Colors.blue[600],
+                                                              fontWeight: FontWeight.w600,
+                                                              fontSize: 11,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    if (periodText.isNotEmpty)
+                                                      SizedBox(height: 1),
+                                                    Text(text, style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600, fontSize: 10),),
+                                                  ],
+                                                ),
                                               );
                                             }
                                             return const SizedBox.shrink();
@@ -897,7 +1124,34 @@ class _BookingScreenState extends State<BookingScreen> {
                   ],
                 );
               }),
-              if (availableDates.isNotEmpty) ...[
+              // رسالة توقف الحجز إذا كان الطبيب موقف الحجز
+              Builder(builder: (context) {
+                final isDisabled = _isDoctorBookingDisabled();
+                print('DEBUG: availableDates.isNotEmpty = ${availableDates.isNotEmpty}');
+                print('DEBUG: _isDoctorBookingDisabled() = $isDisabled');
+                print('DEBUG: سيتم عرض الرسالة = ${availableDates.isNotEmpty && isDisabled}');
+                
+                if (availableDates.isNotEmpty && isDisabled) {
+                  return Column(
+                    children: [
+                      SizedBox(height: 20),
+                      Center(
+                        child: Text(
+                          "خدمة الحجز غير متاحة لهذا الطبيب حالياً",
+                          style: TextStyle(
+                            color: Colors.red[700],
+                            fontSize: 16,
+                            fontWeight: FontWeight.normal,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return SizedBox.shrink();
+              }),
+              if (availableDates.isNotEmpty && selectedDate != null && !_isDoctorBookingDisabled()) ...[
                 SizedBox(height: 20),
                 Center(
                   child: ElevatedButton(

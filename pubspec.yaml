@@ -98,6 +98,7 @@ flutter:
      - assets/images/logo.png
      - assets/images/center.png
      - assets/images/icon.png
+     - assets/images/whattsap.png
      - assets/fonts/Cairo-Regular.ttf
      - assets/fonts/Amiri-Regular.ttf
      - assets/fonts/NotoNaskhArabic-Regular.ttf

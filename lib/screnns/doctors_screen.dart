@@ -6,11 +6,13 @@ import 'package:hospital_app/widgets/optimized_loading_widget.dart';
 class DoctorsScreen extends StatefulWidget {
   final String facilityId;
   final String specId;
+  final String specializationName;
 
   const DoctorsScreen({
     super.key,
     required this.facilityId,
     required this.specId,
+    required this.specializationName,
   });
 
   @override
@@ -56,17 +58,102 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   }
 
   List<QueryDocumentSnapshot> getFilteredDoctors() {
+    // تصفية الأطباء المفعلين أولاً
+    final activeDoctors = _allDoctors.where((doctor) {
+      final data = doctor.data() as Map<String, dynamic>;
+      final isActive = data['isActive'];
+      // فقط الأطباء الذين لديهم isActive = true صراحة
+      return isActive == true;
+    }).toList();
+    
+    // ترتيب الأطباء حسب أيام العمل
+    activeDoctors.sort((a, b) {
+      final aData = a.data() as Map<String, dynamic>;
+      final bData = b.data() as Map<String, dynamic>;
+      
+      final aWorkingDays = _getWorkingDaysList(aData['workingSchedule'] ?? {});
+      final bWorkingDays = _getWorkingDaysList(bData['workingSchedule'] ?? {});
+      
+      final aPriority = _getWorkingDaysPriority(aWorkingDays);
+      final bPriority = _getWorkingDaysPriority(bWorkingDays);
+      
+      return aPriority.compareTo(bPriority);
+    });
+    
     if (_searchQuery.isEmpty) {
-      return _allDoctors;
+      return activeDoctors;
     }
     
-    return _allDoctors.where((doctor) {
+    return activeDoctors.where((doctor) {
       final data = doctor.data() as Map<String, dynamic>;
       final doctorName = data['docName']?.toString().toLowerCase() ?? '';
       final searchLower = _searchQuery.toLowerCase();
       
       return doctorName.contains(searchLower);
     }).toList();
+  }
+
+  // دالة لاستخراج قائمة أيام العمل
+  List<String> _getWorkingDaysList(dynamic workingSchedule) {
+    if (workingSchedule == null || workingSchedule.isEmpty) {
+      return [];
+    }
+
+    Map<String, dynamic> scheduleMap;
+    if (workingSchedule is Map) {
+      scheduleMap = Map<String, dynamic>.from(workingSchedule);
+    } else {
+      return [];
+    }
+
+    List<String> workingDays = [];
+    
+    scheduleMap.forEach((day, value) {
+      if (day == 'الأحد' || day == 'الاثنين' || day == 'الثلاثاء' || 
+          day == 'الأربعاء' || day == 'الخميس' || day == 'الجمعة' || day == 'السبت') {
+        workingDays.add(day);
+      }
+    });
+
+    return workingDays;
+  }
+
+  // دالة لحساب أولوية أيام العمل
+  int _getWorkingDaysPriority(List<String> workingDays) {
+    if (workingDays.isEmpty) {
+      return 999; // أقل أولوية للأطباء بدون أيام عمل
+    }
+
+    final now = DateTime.now();
+    final today = _getArabicDayName(now.weekday);
+    final tomorrow = _getArabicDayName(now.weekday == 7 ? 1 : now.weekday + 1);
+
+    // أولوية 1: يعمل اليوم
+    if (workingDays.contains(today)) {
+      return 1;
+    }
+    
+    // أولوية 2: يعمل غداً
+    if (workingDays.contains(tomorrow)) {
+      return 2;
+    }
+    
+    // أولوية 3: يعمل في الأيام القادمة
+    return 3;
+  }
+
+  // دالة لتحويل رقم اليوم إلى اسم عربي
+  String _getArabicDayName(int weekday) {
+    switch (weekday) {
+      case 1: return 'الاثنين';
+      case 2: return 'الثلاثاء';
+      case 3: return 'الأربعاء';
+      case 4: return 'الخميس';
+      case 5: return 'الجمعة';
+      case 6: return 'السبت';
+      case 7: return 'الأحد';
+      default: return '';
+    }
   }
 
   String _getWorkingDaysText(dynamic workingSchedule) {
@@ -86,8 +173,8 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     
     scheduleMap.forEach((day, value) {
       // التحقق من أن اليوم موجود في قائمة الأيام العربية
-      if (day is String && (day == 'الأحد' || day == 'الاثنين' || day == 'الثلاثاء' || 
-                           day == 'الأربعاء' || day == 'الخميس' || day == 'الجمعة' || day == 'السبت')) {
+      if (day == 'الأحد' || day == 'الاثنين' || day == 'الثلاثاء' || 
+          day == 'الأربعاء' || day == 'الخميس' || day == 'الجمعة' || day == 'السبت') {
         // إذا كان اليوم موجود في الجدول، فهو يوم عمل
         workingDays.add(day);
       }
@@ -101,14 +188,25 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     final dayOrder = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
     workingDays.sort((a, b) => dayOrder.indexOf(a).compareTo(dayOrder.indexOf(b)));
 
-    // إذا كان عدد الأيام أكثر من 4، نقسمها على سطرين
+    // تقسيم الأيام على أسطر متعددة إذا كانت كثيرة
     String result;
-    if (workingDays.length > 4) {
-      final firstLine = workingDays.take(4).join(' - ');
-      final secondLine = workingDays.skip(4).join(' - ');
-      result = 'أيام العمل:\n$firstLine\n$secondLine';
-    } else {
+    if (workingDays.length <= 3) {
+      // 3 أيام أو أقل - سطر واحد
       result = 'أيام العمل: ${workingDays.join(' - ')}';
+    } else if (workingDays.length <= 5) {
+      // 4-5 أيام - سطرين
+      final firstLine = workingDays.take(3).join(' - ');
+      final secondLine = workingDays.skip(3).join(' - ');
+      result = 'أيام العمل: $firstLine\n$secondLine';
+    } else {
+      // 6-7 أيام - ثلاثة أسطر
+      final firstLine = workingDays.take(3).join(' - ');
+      final secondLine = workingDays.skip(3).take(3).join(' - ');
+      final thirdLine = workingDays.skip(6).join(' - ');
+      result = 'أيام العمل: $firstLine\n$secondLine';
+      if (thirdLine.isNotEmpty) {
+        result += '\n$thirdLine';
+      }
     }
     
     return result;
@@ -164,11 +262,11 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                   ),
                 )
               : Text(
-                  "الأطباء",
+                  "أطباء ${widget.specializationName}",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF2FBDAF),
-                    fontSize: 30,
+                    fontSize: 20,
                   ),
                 ),
         ),
@@ -208,7 +306,32 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
               }
 
               _allDoctors = snapshot.data!.docs;
-              final doctors = _searchQuery.isEmpty ? _allDoctors : getFilteredDoctors();
+              final doctors = getFilteredDoctors();
+              
+              // إذا لم يكن هناك أطباء مفعلين
+              if (doctors.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.medical_services_outlined,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'لا يوجد أطباء حالياً',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
               
               if (_searchQuery.isNotEmpty && doctors.isEmpty) {
                 return Center(
