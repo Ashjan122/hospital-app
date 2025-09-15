@@ -2,7 +2,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/firebase_options.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
-import 'package:hospital_app/screnns/onboarding_screen.dart';
+// import 'package:hospital_app/screnns/onboarding_screen.dart';
+import 'package:hospital_app/screnns/register_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -106,11 +107,11 @@ class HospitalApp extends StatelessWidget {
             if (snapshot.hasData) {
               final prefs = snapshot.data!;
               final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
-              
+              // Temporarily disable onboarding: show RegisterScreen on first app open
               if (hasSeenOnboarding) {
                 return const LoginScreen();
               } else {
-                return const OnboardingScreen();
+                return const RegisterScreen();
               }
             }
             

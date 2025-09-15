@@ -1,5 +1,6 @@
 import 'package:http/http.dart' as http;
 import 'dart:math';
+import 'package:sms_autofill/sms_autofill.dart';
 
 class SMSService {
   static const String _baseUrl = 'https://www.airtel.sd/api/html_send_sms/';
@@ -24,8 +25,21 @@ class SMSService {
       String formattedPhone = _formatPhoneNumber(phoneNumber);
       print('📞 رقم الهاتف المنسق: $formattedPhone');
       
-      // Prepare SMS text
-      String smsText = 'رمز التحقق الخاص بك هو: $otp. صالح لمدة 5 دقائق.';
+      // Prepare SMS text with Android app signature for auto-fill
+      String appSignature = '';
+      try {
+        appSignature = await SmsAutoFill().getAppSignature;
+        print('✍️ App Signature: $appSignature');
+      } catch (e) {
+        print('⚠️ تعذر الحصول على App Signature: $e');
+      }
+
+      // Keep the original human-friendly content (without branding)
+      String smsText = 'رمز التحقق الخاص بك هو:\n$otp\n\nصالح لمدة 5 دقائق.';
+      // Append app signature on a separate last line for Android SMS Retriever (required for autofill)
+      if (appSignature.isNotEmpty) {
+        smsText += '\n$appSignature';
+      }
       print('💬 نص الرسالة: $smsText');
       
       // Encode parameters

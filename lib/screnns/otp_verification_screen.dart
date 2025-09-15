@@ -6,6 +6,8 @@ import 'package:hospital_app/services/whatsapp_service.dart';
 import 'package:hospital_app/models/country.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import 'package:hospital_app/screnns/patient_home_screen.dart';
+import 'package:sms_autofill/sms_autofill.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -45,10 +47,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   bool _isResending = false;
   int _remainingTime = 300; // 5 minutes in seconds
   Timer? _timer;
+  Timer? _clipboardTimer;
   
   // Current OTP state
   late String _currentOtp;
   late DateTime _currentOtpCreatedAt;
+  String? _appSignature;
 
   @override
   void initState() {
@@ -56,11 +60,15 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     _currentOtp = widget.initialOtp;
     _currentOtpCreatedAt = widget.initialOtpCreatedAt;
     _startTimer();
+    _initOtpAutoFill();
+    _startClipboardListener();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _clipboardTimer?.cancel();
+    SmsAutoFill().unregisterListener();
     for (var controller in _otpControllers) {
       controller.dispose();
     }
@@ -68,6 +76,52 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       node.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _initOtpAutoFill() async {
+    try {
+      _appSignature = await SmsAutoFill().getAppSignature;
+      // Listen for incoming SMS code (Android)
+      await SmsAutoFill().listenForCode();
+      SmsAutoFill().code.listen((code) {
+        if (code.isNotEmpty) {
+          final match = RegExp(r'\d{4,6}').firstMatch(code);
+          if (match != null) {
+            _fillOtp(match.group(0)!);
+          }
+        }
+      });
+    } catch (e) {
+      // Ignore if not supported (iOS/permissions)
+    }
+  }
+
+  void _startClipboardListener() {
+    // Fallback for WhatsApp: poll clipboard briefly to detect OTP copied
+    _clipboardTimer = Timer.periodic(const Duration(seconds: 2), (t) async {
+      try {
+        final data = await Clipboard.getData('text/plain');
+        final text = data?.text ?? '';
+        if (text.isNotEmpty) {
+          final match = RegExp(r'\b(\d{6})\b').firstMatch(text);
+          if (match != null) {
+            _fillOtp(match.group(1)!);
+            t.cancel();
+          }
+        }
+      } catch (_) {}
+    });
+  }
+
+  void _fillOtp(String code) {
+    if (code.length < 4) return;
+    final six = code.length >= 6 ? code.substring(0, 6) : code.padRight(6, '0');
+    for (int i = 0; i < 6; i++) {
+      _otpControllers[i].text = six[i];
+    }
+    // Move focus away and verify automatically
+    FocusScope.of(context).unfocus();
+    _verifyOTP();
   }
 
   void _startTimer() {
@@ -235,20 +289,20 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         'verified': true, // Mark as verified
       });
 
-      // Save phone number in SharedPreferences for lab results
+      // Save login data in SharedPreferences
       final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userType', 'patient');
+      await prefs.setString('userName', widget.name);
+      await prefs.setString('userEmail', widget.phoneNumber);
+      await prefs.setString('userId', patientId);
       await prefs.setString('userPhone', widget.phoneNumber);
 
       if (mounted) {
-        // Navigate back to login screen
-        Navigator.of(context).pop();
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول برقم الهاتف: ${widget.phoneNumber}'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
+        // Go to home screen immediately
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+          (route) => false,
         );
       }
     } catch (e) {
