@@ -6,6 +6,8 @@ import 'package:hospital_app/services/syncfusion_pdf_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
+import 'package:intl/intl.dart';
+import 'dart:ui' as ui;
 import 'dart:io';
 
 class PatientBookingsScreen extends StatefulWidget {
@@ -447,7 +449,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
     final filteredBookings = getFilteredBookings();
 
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: ui.TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
           title: Text(
@@ -751,6 +753,188 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
       final String filePath = '${appDocDir.path}/booking_confirmation.pdf';
       final File file = File(filePath);
       
+      // حساب وقت بداية الفترة للطبيب في يوم الحجز
+      String? periodStartTime;
+      try {
+        if (booking['facilityId'] != null && booking['specializationId'] != null && booking['doctorId'] != null) {
+          // المسار: facilities/{facilityId}/specializations/{specializationId}/doctors/{doctorId}
+          final doctorSnap = await FirebaseFirestore.instance
+              .collection('facilities')
+              .doc(booking['facilityId'])
+              .collection('specializations')
+              .doc(booking['specializationId'])
+              .collection('doctors')
+              .doc(booking['doctorId'])
+              .get();
+          final doctorData = doctorSnap.data() as Map<String, dynamic>?;
+          final workingSchedule = (doctorData?['workingSchedule'] as Map<String, dynamic>?) ?? {};
+          if (workingSchedule.isNotEmpty) {
+            // يوم الحجز بصيغة عربية
+            final dayName = DateFormat('EEEE', 'ar').format(bookingDate).trim();
+            String? alternativeDayName;
+            switch (bookingDate.weekday) {
+              case 1:
+                alternativeDayName = 'الاثنين';
+                break;
+              case 2:
+                alternativeDayName = 'الثلاثاء';
+                break;
+              case 3:
+                alternativeDayName = 'الأربعاء';
+                break;
+              case 4:
+                alternativeDayName = 'الخميس';
+                break;
+              case 5:
+                alternativeDayName = 'الجمعة';
+                break;
+              case 6:
+                alternativeDayName = 'السبت';
+                break;
+              case 7:
+                alternativeDayName = 'الأحد';
+                break;
+            }
+            var schedule = workingSchedule[dayName];
+            if (schedule == null && alternativeDayName != null) {
+              schedule = workingSchedule[alternativeDayName];
+            }
+            // إذا لم نجد جدول اليوم، حاول إيجاد أي جدول يحتوي evening/morning
+            if (schedule == null) {
+              for (final entry in workingSchedule.entries) {
+                final val = entry.value;
+                if (val is Map && (val['evening'] != null || val['morning'] != null)) {
+                  schedule = val;
+                  break;
+                }
+              }
+            }
+            if (schedule != null) {
+              // 1) إذا وُجدت الفترة المحددة مباشرة
+              if (booking['period'] != null && schedule[booking['period']] != null) {
+                periodStartTime = schedule[booking['period']]['start'];
+              } else {
+                // 2) محاولة الاستدلال من وقت الحجز
+                String bookedTimeStr = (booking['time'] ?? '').toString();
+                // تطبيع الوقت: 16 => 16:00
+                if (bookedTimeStr.isNotEmpty && !bookedTimeStr.contains(':')) {
+                  final onlyDigits = RegExp(r'^\d{1,2}  $').hasMatch(bookedTimeStr);
+                  if (onlyDigits) {
+                    bookedTimeStr = bookedTimeStr.padLeft(2, '0') + ':00';
+                  }
+                }
+                final String? eveningStart = schedule['evening']?['start']?.toString();
+                final String? eveningEnd = schedule['evening']?['end']?.toString();
+                final String? morningStart = schedule['morning']?['start']?.toString();
+                final String? morningEnd = schedule['morning']?['end']?.toString();
+
+                DateTime? _timeOf(String? hhmm) {
+                  if (hhmm == null || !hhmm.contains(':')) return null;
+                  final parts = hhmm.split(':');
+                  return DateTime(bookingDate.year, bookingDate.month, bookingDate.day,
+                      int.tryParse(parts[0]) ?? 0, int.tryParse(parts[1]) ?? 0);
+                }
+
+                final DateTime? bookedTime = _timeOf(bookedTimeStr);
+                final DateTime? eveStart = _timeOf(eveningStart);
+                final DateTime? eveEnd = _timeOf(eveningEnd);
+                final DateTime? morStart = _timeOf(morningStart);
+                final DateTime? morEnd = _timeOf(morningEnd);
+
+                bool inRange(DateTime? t, DateTime? s, DateTime? e) {
+                  if (t == null || s == null || e == null) return false;
+                  return (t.isAtSameMomentAs(s) || t.isAfter(s)) && t.isBefore(e);
+                }
+
+                if (bookedTime != null && inRange(bookedTime, eveStart, eveEnd)) {
+                  periodStartTime = eveningStart;
+                } else if (bookedTime != null && inRange(bookedTime, morStart, morEnd)) {
+                  periodStartTime = morningStart;
+                } else if (eveningStart != null) {
+                  // 3) إذا لا يمكن الاستدلال، واختيار المساء إن كان هو المتاح الوحيد (كما في بياناتك)
+                  periodStartTime = eveningStart;
+                } else if (morningStart != null) {
+                  periodStartTime = morningStart;
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      // Fallback: إذا تعذر الحصول على start من جدول العمل، استخدم أول وقت حجز في نفس اليوم والفترة للطبيب
+      try {
+        if ((periodStartTime == null || periodStartTime.isEmpty) &&
+            booking['doctorId'] != null &&
+            booking['date'] != null) {
+          final String targetPeriod = (booking['period']?.toString().isNotEmpty ?? false)
+              ? booking['period'].toString()
+              : 'evening';
+
+          final qs = await FirebaseFirestore.instance
+              .collection('bookings')
+              .where('doctorId', isEqualTo: booking['doctorId'])
+              .where('date', isEqualTo: booking['date'])
+              .where('period', isEqualTo: targetPeriod)
+              .orderBy('time')
+              .limit(1)
+              .get();
+
+          if (qs.docs.isNotEmpty) {
+            final first = qs.docs.first.data();
+            String t = (first['time'] ?? '').toString();
+            // تطبيع مثل 16 -> 16:00
+            if (t.isNotEmpty && !t.contains(':') && RegExp(r'^\d{1,2}$').hasMatch(t)) {
+              t = t.padLeft(2, '0') + ':00';
+            }
+            if (t.isNotEmpty) {
+              periodStartTime = t;
+            }
+          }
+        }
+      } catch (e) {
+        // تجاهل أي أخطاء في الاستعلام الاحتياطي
+      }
+
+      // Fallback إضافي: استخدام الحجوزات المحمّلة في الشاشة لاستخراج أول وقت لنفس الطبيب/اليوم/الفترة
+      if ((periodStartTime == null || periodStartTime.isEmpty)) {
+        try {
+          String targetPeriod = (booking['period']?.toString().isNotEmpty ?? false)
+              ? booking['period'].toString()
+              : 'evening';
+
+          // اجلب جميع الحجوزات المطابقة من الذاكرة
+          final sameDayDoctor = _bookings.where((b) {
+            return b['doctorId'] == booking['doctorId'] &&
+                   b['date'] == booking['date'] &&
+                   (b['period']?.toString() ?? '') == targetPeriod;
+          }).toList();
+
+          int _toMinutes(String t) {
+            // تطبيع الوقت: "16" -> "16:00"
+            if (t.isNotEmpty && !t.contains(':') && RegExp(r'^\d{1,2}$').hasMatch(t)) {
+              t = t.padLeft(2, '0') + ':00';
+            }
+            final parts = t.split(':');
+            final h = int.tryParse(parts[0]) ?? 0;
+            final m = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+            return h * 60 + m;
+          }
+
+          if (sameDayDoctor.isNotEmpty) {
+            sameDayDoctor.sort((a, b) => _toMinutes((a['time'] ?? '').toString())
+                .compareTo(_toMinutes((b['time'] ?? '').toString())));
+            String t = (sameDayDoctor.first['time'] ?? '').toString();
+            if (t.isNotEmpty && !t.contains(':') && RegExp(r'^\d{1,2}$').hasMatch(t)) {
+              t = t.padLeft(2, '0') + ':00';
+            }
+            if (t.isNotEmpty) {
+              periodStartTime = t;
+            }
+          }
+        } catch (_) {}
+      }
+
       // إنشاء PDF
       await SyncfusionPdfService.generateBookingPdf(
         facilityName: booking['facilityName'] ?? 'مركز طبي',
@@ -762,6 +946,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
         bookingTime: booking['time'] ?? '',
         period: booking['period'] ?? 'morning',
         bookingId: booking['id'] ?? 'UNKNOWN',
+        periodStartTime: periodStartTime,
       );
       
       // عرض خيارات فتح ومشاركة

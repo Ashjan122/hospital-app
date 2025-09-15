@@ -26,8 +26,9 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
 
   Future<void> _loadCurrentUserPhone() async {
     final prefs = await SharedPreferences.getInstance();
+    final phone = prefs.getString('userPhone');
     setState(() {
-      _currentUserPhone = prefs.getString('userPhone');
+      _currentUserPhone = phone;
     });
     print('رقم الهاتف المحمل: $_currentUserPhone');
   }
@@ -50,10 +51,14 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
 
       final collection = FirebaseFirestore.instance.collection('homeSampleRequests');
       final docRef = collection.doc();
+      final createdByPhone = (_currentUserPhone != null && _currentUserPhone!.isNotEmpty)
+          ? _currentUserPhone!.trim()
+          : '';
       final requestData = {
         'id': docRef.id,
         'patientName': _nameController.text.trim(),
         'patientPhone': _phoneController.text.trim(),
+        'createdByPhone': createdByPhone,
         'address': _addressController.text.trim(),
         'controlId': null,
         'createdAt': FieldValue.serverTimestamp(),
@@ -70,11 +75,6 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
       
       await docRef.set(requestData);
 
-      // حفظ رقم الهاتف في SharedPreferences لعرض الطلبات
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('userPhone', _phoneController.text.trim());
-      print('تم حفظ رقم الهاتف في SharedPreferences: ${_phoneController.text.trim()}');
-
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -83,9 +83,6 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
           backgroundColor: Color(0xFF2FBDAF),
         ),
       );
-      
-      // تحديث رقم الهاتف المحمل
-      _currentUserPhone = _phoneController.text.trim();
       
       // مسح النموذج
       _nameController.clear();
@@ -232,13 +229,9 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
                 fillColor: Colors.grey[100],
               ),
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'يرجى إدخال رقم الهاتف';
-                }
+                if (value == null || value.trim().isEmpty) return 'يرجى إدخال رقم الهاتف';
                 final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-                if (digits.length < 7) {
-                  return 'رقم الهاتف غير صحيح';
-                }
+                if (digits.length < 7) return 'رقم الهاتف غير صحيح';
                 return null;
               },
               textDirection: TextDirection.rtl,
@@ -302,8 +295,7 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('homeSampleRequests')
-          .where('patientPhone', isEqualTo: _currentUserPhone)
-          .orderBy('createdAt', descending: true)
+          .where('createdByPhone', isEqualTo: _currentUserPhone)
           .snapshots(),
       builder: (context, snapshot) {
         print('StreamBuilder - ConnectionState: ${snapshot.connectionState}');
@@ -326,9 +318,7 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('لا توجد طلبات'),
-                const SizedBox(height: 8),
-                Text('رقم الهاتف: $_currentUserPhone', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text('لا توجد طلبات بعد'),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: () {
@@ -345,11 +335,21 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
           );
         }
 
+        // ترتيب محلي لتجنب الحاجة إلى فهرس مركب في Firestore
+        final docs = snapshot.data!.docs.toList()
+          ..sort((a, b) {
+            final ta = (a['createdAt'] as Timestamp?);
+            final tb = (b['createdAt'] as Timestamp?);
+            final da = ta?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
+            final db = tb?.toDate() ?? DateTime.fromMillisecondsSinceEpoch(0);
+            return db.compareTo(da); // تنازلي
+          });
+
         return ListView.builder(
           padding: const EdgeInsets.all(20),
-          itemCount: snapshot.data!.docs.length,
+          itemCount: docs.length,
           itemBuilder: (context, index) {
-            final doc = snapshot.data!.docs[index];
+            final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
             
             return Card(
@@ -359,8 +359,26 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const SizedBox(height: 4),
+                    Text(
+                      data['patientName'] ?? '',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
+                        Expanded(
+                          child: Text(
+                            data['patientPhone'] ?? '',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
@@ -377,22 +395,6 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      data['patientName'] ?? '',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      data['patientPhone'] ?? '',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
