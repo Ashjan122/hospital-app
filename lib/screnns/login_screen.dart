@@ -3,6 +3,7 @@ import 'package:hospital_app/screnns/patient_home_screen.dart';
 import 'package:hospital_app/screnns/register_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hospital_app/models/country.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,9 +14,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _isPasswordVisible = false;
+  final _phoneController = TextEditingController();
   bool _isLoading = false;
 
   @override
@@ -26,8 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -77,6 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -84,103 +83,76 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
       try {
-          // Check if input looks like a phone number
-          bool isPhoneNumber = RegExp(r'^[0-9+\-\s()]+$').hasMatch(_usernameController.text.trim());
+        String phoneInput = _phoneController.text.trim();
+        
+        // Check if input looks like a phone number
+        bool isPhoneNumber = RegExp(r'^[0-9+\-\s()]+$').hasMatch(phoneInput);
+        
+        if (isPhoneNumber) {
+          // Try multiple phone number formats
+          List<String> possibleNumbers = _generatePossiblePhoneNumbers(phoneInput);
           
-          if (isPhoneNumber) {
-            // Format phone number for search
-            String searchPhoneNumber = _usernameController.text.trim();
-            
-            // Remove any non-digit characters
-            String digitsOnly = searchPhoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
-            
-            // If it's a 9-digit number starting with 1 or 9, add country code
-            if (digitsOnly.length == 9 && (digitsOnly.startsWith('1') || digitsOnly.startsWith('9'))) {
-              searchPhoneNumber = '249$digitsOnly';
-            }
-            // If it's a 10-digit number starting with 01 or 09, remove first digit and add country code
-            else if (digitsOnly.length == 10 && (digitsOnly.startsWith('01') || digitsOnly.startsWith('09'))) {
-              searchPhoneNumber = '249${digitsOnly.substring(1)}';
-            }
-            // If it's already 12 digits starting with 249, use as is
-            else if (digitsOnly.length == 12 && digitsOnly.startsWith('249')) {
-              searchPhoneNumber = digitsOnly;
-            }
-            // If it's 12 digits starting with +249, remove + and use
-            else if (digitsOnly.length == 12 && searchPhoneNumber.startsWith('+249')) {
-              searchPhoneNumber = digitsOnly;
-            }
-            // If it's 11 digits starting with +249, remove + and use
-            else if (digitsOnly.length == 11 && searchPhoneNumber.startsWith('+249')) {
-              searchPhoneNumber = digitsOnly;
-            }
-            
-            // Patient login with phone number
-            // First, find the patient by phone number in Firestore
+          bool found = false;
+          String? foundPhoneNumber;
+          DocumentSnapshot? foundPatient;
+          
+          // Search for each possible format
+          for (String phoneNumber in possibleNumbers) {
             final patientsQuery = await FirebaseFirestore.instance
                 .collection('patients')
-                .where('phone', isEqualTo: searchPhoneNumber)
+                .where('phone', isEqualTo: phoneNumber)
                 .get();
-
-                        if (patientsQuery.docs.isNotEmpty) {
-              final patientDoc = patientsQuery.docs.first;
-              final patientData = patientDoc.data();
-              final patientPassword = patientData['password'] ?? '';
-
-              if (patientPassword == _passwordController.text) {
-                // Direct login without Firebase Auth for phone-based login
-                final patientName = patientData['name'] ?? 'مريض عزيز';
-                final patientId = patientDoc.id;
-                
-                // Save patient login data
-                await _saveLoginData('patient', userEmail: searchPhoneNumber, userName: patientName, userId: patientId);
-                
-                // Save phone number separately for lab results
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setString('userPhone', searchPhoneNumber);
-                
-                // Save FCM token for patient
-                await _saveFCMTokenForPatient(patientId);
-                
-                if (mounted) {
-                  setState(() {
-                    _isLoading = false;
-                  });
-                  
-                  // Patient login - redirect to patient home screen
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
-                  );
-                                 }
-              } else {
-                setState(() {
-                  _isLoading = false;
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('كلمة المرور غير صحيحة'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            } else {
+            
+            if (patientsQuery.docs.isNotEmpty) {
+              found = true;
+              foundPhoneNumber = phoneNumber;
+              foundPatient = patientsQuery.docs.first;
+              break;
+            }
+          }
+          
+          if (found && foundPatient != null) {
+            final patientData = foundPatient.data() as Map<String, dynamic>;
+            final patientName = patientData['name'] ?? 'مريض عزيز';
+            final patientId = foundPatient.id;
+            
+            // Save patient login data
+            await _saveLoginData('patient', userEmail: foundPhoneNumber!, userName: patientName, userId: patientId);
+            
+            // Save phone number separately for lab results
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('userPhone', foundPhoneNumber);
+            
+            // Save FCM token for patient
+            await _saveFCMTokenForPatient(patientId);
+            
+            if (mounted) {
               setState(() {
                 _isLoading = false;
               });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('رقم الهاتف غير موجود'),
-                  backgroundColor: Colors.red,
-                ),
+              
+              // Patient login - redirect to patient home screen
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
               );
             }
           } else {
-          // Not a valid phone number
-              setState(() {
-                _isLoading = false;
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
+            setState(() {
+              _isLoading = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('رقم الهاتف غير موجود'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        } else {
+          setState(() {
+            _isLoading = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
               content: Text('يرجى إدخال رقم هاتف صحيح'),
               backgroundColor: Colors.red,
             ),
@@ -201,6 +173,40 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
     }
+  }
+
+  // Generate possible phone number formats for search
+  List<String> _generatePossiblePhoneNumbers(String phoneInput) {
+    List<String> possibleNumbers = [];
+    String digitsOnly = phoneInput.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    // Add the original input as is
+    possibleNumbers.add(digitsOnly);
+    
+    // Try different country codes
+    for (Country country in Country.countries) {
+      String countryCode = country.dialCode.replaceAll('+', '');
+      
+      // If number already has country code, add as is
+      if (digitsOnly.startsWith(countryCode)) {
+        possibleNumbers.add(digitsOnly);
+        continue;
+      }
+      
+      // Try adding country code
+      String withCountryCode = countryCode + digitsOnly;
+      possibleNumbers.add(withCountryCode);
+      
+      // If number starts with 0, try removing it and adding country code
+      if (digitsOnly.startsWith('0')) {
+        String withoutLeadingZero = digitsOnly.substring(1);
+        String withCountryCodeNoZero = countryCode + withoutLeadingZero;
+        possibleNumbers.add(withCountryCodeNoZero);
+      }
+    }
+    
+    // Remove duplicates
+    return possibleNumbers.toSet().toList();
   }
 
 
@@ -271,13 +277,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 32),
 
-                        // Username/Email/Phone field
+                        // Phone number field
                         TextFormField(
-                          controller: _usernameController,
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
                           decoration: InputDecoration(
                             labelText: "رقم الهاتف",
                             hintText: "أدخل رقم الهاتف",
-                            prefixIcon: const Icon(Icons.person, color: Color(0xFF2FBDAF)),
+                            prefixIcon: const Icon(Icons.phone, color: Color(0xFF2FBDAF)),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -292,46 +299,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'يرجى إدخال رقم الهاتف';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Password field
-                        TextFormField(
-                          controller: _passwordController,
-                          obscureText: !_isPasswordVisible,
-                          decoration: InputDecoration(
-                            labelText: 'كلمة المرور',
-                            prefixIcon: const Icon(Icons.lock, color: Color(0xFF2FBDAF)),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _isPasswordVisible
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                                color: const Color(0xFF2FBDAF),
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _isPasswordVisible = !_isPasswordVisible;
-                                });
-                              },
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color(0xFF2FBDAF),
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال كلمة المرور';
                             }
                             return null;
                           },

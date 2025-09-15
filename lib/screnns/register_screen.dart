@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hospital_app/services/sms_service.dart';
+import 'package:hospital_app/services/whatsapp_service.dart';
+import 'package:hospital_app/models/country.dart';
 import 'package:hospital_app/screnns/otp_verification_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -14,75 +16,90 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
   
-  bool _isPasswordVisible = false;
-  bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
+  
+  // Country and verification method selection
+  Country _selectedCountry = Country.countries.first; // Default to Sudan
+  String _verificationMethod = 'sms'; // 'sms' or 'whatsapp'
+  
+  // Phone number validation patterns for different countries
+  final Map<String, RegExp> _phonePatterns = {
+    'SD': RegExp(r'^[19]\d{8}$'), // Sudan: 9 digits starting with 1 or 9
+    'SA': RegExp(r'^5\d{8}$'), // Saudi: 9 digits starting with 5
+    'AE': RegExp(r'^5\d{8}$'), // UAE: 9 digits starting with 5
+    'QA': RegExp(r'^[37]\d{7}$'), // Qatar: 8 digits starting with 3 or 7
+    'EG': RegExp(r'^1\d{9}$'), // Egypt: 10 digits starting with 1
+    'TR': RegExp(r'^5\d{9}$'), // Turkey: 10 digits starting with 5
+    'KW': RegExp(r'^[569]\d{7}$'), // Kuwait: 8 digits starting with 5,6,9
+    'BH': RegExp(r'^[369]\d{7}$'), // Bahrain: 8 digits starting with 3,6,9
+    'OM': RegExp(r'^[79]\d{7}$'), // Oman: 8 digits starting with 7,9
+    'JO': RegExp(r'^7[789]\d{7}$'), // Jordan: 9 digits starting with 77,78,79
+    'LB': RegExp(r'^[37]\d{7}$'), // Lebanon: 8 digits starting with 3,7
+    'SY': RegExp(r'^9\d{8}$'), // Syria: 9 digits starting with 9
+    'IQ': RegExp(r'^7[3-9]\d{8}$'), // Iraq: 10 digits starting with 73-79
+    'LY': RegExp(r'^[29]\d{8}$'), // Libya: 9 digits starting with 2,9
+    'TN': RegExp(r'^[2-5]\d{7}$'), // Tunisia: 8 digits starting with 2-5
+    'DZ': RegExp(r'^[5-7]\d{8}$'), // Algeria: 9 digits starting with 5-7
+    'MA': RegExp(r'^[6-7]\d{8}$'), // Morocco: 9 digits starting with 6,7
+    'YE': RegExp(r'^7\d{8}$'), // Yemen: 9 digits starting with 7
+    'PS': RegExp(r'^5[9]\d{7}$'), // Palestine: 9 digits starting with 59
+  };
 
   @override
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
 
+  void _showCountryPicker() async {
+    final result = await showModalBottomSheet<Country>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _CountryPickerModal(),
+    );
+    
+    if (result != null) {
+      setState(() {
+        _selectedCountry = result;
+      });
+    }
+  }
+
+
   Future<void> _register() async {
     if (_formKey.currentState!.validate()) {
-      if (_passwordController.text != _confirmPasswordController.text) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('كلمات المرور غير متطابقة'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
       setState(() {
         _isLoading = true;
       });
 
       try {
-        // Validate and format phone number
+        // Validate and format phone number based on selected country
         final phoneNumber = _phoneController.text.trim();
-        // Remove any non-digit characters and the prefix
         String digitsOnly = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
         
-        // If it starts with 249, remove it
-        if (digitsOnly.startsWith('249')) {
-          digitsOnly = digitsOnly.substring(3);
+        // Remove country code if present
+        String countryCode = _selectedCountry.dialCode.replaceAll('+', '');
+        if (digitsOnly.startsWith(countryCode)) {
+          digitsOnly = digitsOnly.substring(countryCode.length);
         }
         
-        // If it's 10 digits and starts with 0, remove the 0
-        if (digitsOnly.length == 10 && digitsOnly.startsWith('0')) {
+        // Remove leading 0 if present
+        if (digitsOnly.startsWith('0')) {
           digitsOnly = digitsOnly.substring(1);
         }
         
-        if (digitsOnly.length != 9) {
+        // Validate phone number format for selected country
+        if (!_phonePatterns.containsKey(_selectedCountry.code) || 
+            !_phonePatterns[_selectedCountry.code]!.hasMatch(digitsOnly)) {
           setState(() {
             _isLoading = false;
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('رقم الهاتف يجب أن يكون 9 أرقام (بدون المفتاح)'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
-        
-        // Check if it starts with valid Sudanese prefixes (1 or 9)
-        if (!digitsOnly.startsWith('1') && !digitsOnly.startsWith('9')) {
-          setState(() {
-            _isLoading = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('رقم الهاتف يجب أن يبدأ بـ 1 أو 9'),
+            SnackBar(
+              content: Text('رقم الهاتف غير صحيح لـ ${_selectedCountry.nameAr}'),
               backgroundColor: Colors.red,
             ),
           );
@@ -90,21 +107,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         }
         
         // Format phone number with country code
-        final formattedPhoneNumber = '249$digitsOnly';
-
-        // Validate password strength
-        if (_passwordController.text.length < 6) {
-          setState(() {
-            _isLoading = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('كلمة المرور يجب أن تكون 6 أحرف على الأقل'),
-              backgroundColor: Colors.red,
-            ),
-          );
-          return;
-        }
+        final formattedPhoneNumber = '${countryCode}$digitsOnly';
 
         // Check if phone number already exists
         final existingPatient = await FirebaseFirestore.instance
@@ -127,15 +130,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
           return;
         }
 
-        // Generate OTP and send SMS
+        // Generate OTP and send via selected method
         print('🔍 بدء عملية إنشاء الحساب...');
         print('📱 رقم الهاتف: $formattedPhoneNumber');
+        print('🌍 البلد: ${_selectedCountry.nameAr}');
+        print('📱 طريقة التحقق: $_verificationMethod');
         
         String otp = SMSService.generateOTP();
         print('🔐 رمز التحقق المُنشأ: $otp');
         
         print('📡 إرسال رمز التحقق...');
-        Map<String, dynamic> result = await SMSService.sendOTP(formattedPhoneNumber, otp);
+        Map<String, dynamic> result;
+        
+        if (_verificationMethod == 'whatsapp') {
+          result = await WhatsAppService.sendOTP(formattedPhoneNumber, otp);
+        } else {
+          result = await SMSService.sendOTP(formattedPhoneNumber, otp);
+        }
+        
         print('📊 نتيجة الإرسال: $result');
 
         if (result['success']) {
@@ -151,9 +163,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 builder: (context) => OTPVerificationScreen(
                   phoneNumber: formattedPhoneNumber,
                   name: _nameController.text.trim(),
-                  password: _passwordController.text,
+                  password: '', // Empty password since we removed password fields
                   initialOtp: otp,
                   initialOtpCreatedAt: DateTime.now(),
+                  country: _selectedCountry,
+                  verificationMethod: _verificationMethod,
                 ),
               ),
             );
@@ -267,19 +281,53 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         const SizedBox(height: 32),
 
-                        // Phone field with country code
+                        // Phone field with country code on the left
                         TextFormField(
                           controller: _phoneController,
                           keyboardType: TextInputType.phone,
                           decoration: InputDecoration(
                             labelText: 'رقم الهاتف *',
-                            hintText: '01XXXXXXXX أو 09XXXXXXXX',
-                            prefixIcon: const Icon(Icons.phone, color: Color(0xFF2FBDAF)),
-                            prefixText: '+249 ',
-                            prefixStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF2FBDAF),
+                            hintText: 'أدخل رقمك',
+                            prefixIcon: Padding(
+                              padding: const EdgeInsets.only(left: 16, right: 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.phone, color: Color(0xFF2FBDAF)),
+                                  const SizedBox(width: 8),
+                                  GestureDetector(
+                                    onTap: () {
+                                      _showCountryPicker();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: Colors.grey[300]!),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            _selectedCountry.dialCode,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF2FBDAF),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const Icon(
+                                            Icons.arrow_drop_down,
+                                            color: Color(0xFF2FBDAF),
+                                            size: 14,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -296,26 +344,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             if (value == null || value.isEmpty) {
                               return 'يرجى إدخال رقم الهاتف';
                             }
-                            // Remove any non-digit characters and the prefix
-                            String digitsOnly = value.replaceAll(RegExp(r'[^0-9]'), '');
                             
-                            // If it starts with 249, remove it
-                            if (digitsOnly.startsWith('249')) {
-                              digitsOnly = digitsOnly.substring(3);
+                            String digitsOnly = value.replaceAll(RegExp(r'[^0-9]'), '');
+                            String countryCode = _selectedCountry.dialCode.replaceAll('+', '');
+                            
+                            if (digitsOnly.startsWith(countryCode)) {
+                              digitsOnly = digitsOnly.substring(countryCode.length);
                             }
                             
-                            // If it's 10 digits and starts with 0, remove the 0
-                            if (digitsOnly.length == 10 && digitsOnly.startsWith('0')) {
+                            if (digitsOnly.startsWith('0')) {
                               digitsOnly = digitsOnly.substring(1);
                             }
                             
-                            if (digitsOnly.length != 9) {
-                              return 'رقم الهاتف يجب أن يكون 9 أرقام (بدون المفتاح)';
-                            }
-                            
-                            // Check if it starts with valid Sudanese prefixes (1 or 9)
-                            if (!digitsOnly.startsWith('1') && !digitsOnly.startsWith('9')) {
-                              return 'رقم الهاتف يجب أن يبدأ بـ 1 أو 9';
+                            if (!_phonePatterns.containsKey(_selectedCountry.code) || 
+                                !_phonePatterns[_selectedCountry.code]!.hasMatch(digitsOnly)) {
+                              return 'رقم الهاتف غير صحيح لـ ${_selectedCountry.nameAr}';
                             }
                             
                             return null;
@@ -327,8 +370,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         TextFormField(
                           controller: _nameController,
                           decoration: InputDecoration(
-                            labelText: 'الاسم الرباعي *',
-                            hintText: 'الاسم الأول - اسم الأب - اسم الجد - اسم العائلة',
+                            labelText: 'الاسم الثلاثي *',
+                            hintText: 'أدخل الاسم الثلاثي',
                             prefixIcon: const Icon(Icons.person, color: Color(0xFF2FBDAF)),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -343,18 +386,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           ),
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال الاسم الرباعي';
+                              return 'يرجى إدخال الاسم الثلاثي';
                             }
                             
                             // تقسيم الاسم إلى أجزاء
                             List<String> nameParts = value.trim().split(' ').where((part) => part.isNotEmpty).toList();
                             
-                            if (nameParts.length < 4) {
-                              return 'يرجى إدخال الاسم الرباعي (4 أسماء)';
-                            }
-                            
-                            if (nameParts.length > 4) {
-                              return 'يرجى إدخال 4 أسماء فقط';
+                            if (nameParts.length < 3) {
+                              return 'يرجى إدخال الاسم الثلاثي (3 أسماء على الأقل)';
                             }
                             
                             // التحقق من أن كل جزء يحتوي على حروف عربية أو إنجليزية
@@ -367,95 +406,107 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             return null;
                           },
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 20),
 
-
-
-                        // Password field
-                        TextFormField(
-                          controller: _passwordController,
-                          obscureText: !_isPasswordVisible,
-                          decoration: InputDecoration(
-                            labelText: 'كلمة المرور',
-                            prefixIcon: const Icon(Icons.lock, color: Color(0xFF2FBDAF)),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _isPasswordVisible
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                                color: const Color(0xFF2FBDAF),
+                        // Verification method selection
+                        Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _verificationMethod = 'sms';
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: _verificationMethod == 'sms' 
+                                        ? const Color(0xFFE0F2F1) 
+                                        : Colors.white,
+                                    border: Border.all(
+                                      color: _verificationMethod == 'sms' 
+                                          ? const Color(0xFF2FBDAF) 
+                                          : Colors.grey[300]!,
+                                      width: 1.5,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      if (_verificationMethod == 'sms')
+                                        const Icon(
+                                          Icons.check,
+                                          color: Color(0xFF2FBDAF),
+                                          size: 16,
+                                        ),
+                                      if (_verificationMethod == 'sms') const SizedBox(width: 6),
+                                      Text(
+                                        'رسالة نصية',
+                                        style: TextStyle(
+                                          color: _verificationMethod == 'sms' 
+                                              ? Colors.black87
+                                              : Colors.grey[600],
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              onPressed: () {
-                                setState(() {
-                                  _isPasswordVisible = !_isPasswordVisible;
-                                });
-                              },
                             ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color(0xFF2FBDAF),
-                                width: 2,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _verificationMethod = 'whatsapp';
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: _verificationMethod == 'whatsapp' 
+                                        ? const Color(0xFFE0F2F1) 
+                                        : Colors.white,
+                                    border: Border.all(
+                                      color: _verificationMethod == 'whatsapp' 
+                                          ? const Color(0xFF2FBDAF) 
+                                          : Colors.grey[300]!,
+                                      width: 1.5,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      if (_verificationMethod == 'whatsapp')
+                                        const Icon(
+                                          Icons.check,
+                                          color: Color(0xFF2FBDAF),
+                                          size: 16,
+                                        ),
+                                      if (_verificationMethod == 'whatsapp') const SizedBox(width: 6),
+                                      Text(
+                                        'واتساب',
+                                        style: TextStyle(
+                                          color: _verificationMethod == 'whatsapp' 
+                                              ? Colors.black87
+                                              : Colors.grey[600],
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'يرجى إدخال كلمة المرور';
-                            }
-                            if (value.length < 6) {
-                              return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
-                            }
-                            return null;
-                          },
+                          ],
                         ),
-                        const SizedBox(height: 16),
-
-                        // Confirm Password field
-                        TextFormField(
-                          controller: _confirmPasswordController,
-                          obscureText: !_isConfirmPasswordVisible,
-                          decoration: InputDecoration(
-                            labelText: 'تأكيد كلمة المرور',
-                            prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF2FBDAF)),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _isConfirmPasswordVisible
-                                    ? Icons.visibility
-                                    : Icons.visibility_off,
-                                color: const Color(0xFF2FBDAF),
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
-                                });
-                              },
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Color(0xFF2FBDAF),
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'يرجى تأكيد كلمة المرور';
-                            }
-                            if (value != _passwordController.text) {
-                              return 'كلمات المرور غير متطابقة';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
 
                         // Register button
                         SizedBox(
@@ -526,6 +577,128 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CountryPickerModal extends StatefulWidget {
+  @override
+  _CountryPickerModalState createState() => _CountryPickerModalState();
+}
+
+class _CountryPickerModalState extends State<_CountryPickerModal> {
+  String searchQuery = '';
+  List<Country> filteredCountries = Country.countries;
+
+  @override
+  void initState() {
+    super.initState();
+    filteredCountries = Country.countries;
+  }
+
+  void _filterCountries(String query) {
+    setState(() {
+      searchQuery = query.toLowerCase();
+      if (query.isEmpty) {
+        filteredCountries = Country.countries;
+      } else {
+        filteredCountries = Country.countries.where((country) {
+          return country.nameAr.toLowerCase().contains(searchQuery) ||
+                 country.name.toLowerCase().contains(searchQuery) ||
+                 country.dialCode.contains(query);
+        }).toList();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.7,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Handle bar
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TextField(
+              onChanged: _filterCountries,
+              decoration: InputDecoration(
+                hintText: 'ابحث عن بلدك أو أدخل المفتاح',
+                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFF2FBDAF)),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Countries list
+          Expanded(
+            child: filteredCountries.isEmpty
+                ? const Center(
+                    child: Text(
+                      'لا توجد نتائج',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: filteredCountries.length,
+                    itemBuilder: (context, index) {
+                      final country = filteredCountries[index];
+                      return ListTile(
+                        leading: Text(
+                          country.flag,
+                          style: const TextStyle(fontSize: 24),
+                        ),
+                        title: Text(
+                          country.nameAr,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        trailing: Text(
+                          country.dialCode,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2FBDAF),
+                          ),
+                        ),
+                        onTap: () {
+                          Navigator.pop(context, country);
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

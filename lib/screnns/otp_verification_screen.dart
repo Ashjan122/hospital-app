@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hospital_app/services/sms_service.dart';
+import 'package:hospital_app/services/whatsapp_service.dart';
+import 'package:hospital_app/models/country.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
@@ -11,6 +13,8 @@ class OTPVerificationScreen extends StatefulWidget {
   final String password;
   final String initialOtp;
   final DateTime initialOtpCreatedAt;
+  final Country country;
+  final String verificationMethod;
 
   const OTPVerificationScreen({
     super.key,
@@ -19,6 +23,8 @@ class OTPVerificationScreen extends StatefulWidget {
     required this.password,
     required this.initialOtp,
     required this.initialOtpCreatedAt,
+    required this.country,
+    required this.verificationMethod,
   });
 
   @override
@@ -89,7 +95,13 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
     try {
       String newOTP = SMSService.generateOTP();
-      Map<String, dynamic> result = await SMSService.sendOTP(widget.phoneNumber, newOTP);
+      Map<String, dynamic> result;
+      
+      if (widget.verificationMethod == 'whatsapp') {
+        result = await WhatsAppService.sendOTP(widget.phoneNumber, newOTP);
+      } else {
+        result = await SMSService.sendOTP(widget.phoneNumber, newOTP);
+      }
 
       if (result['success']) {
         // Update the OTP in the state
@@ -102,9 +114,10 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         _startTimer();
 
         if (mounted) {
+          String methodText = widget.verificationMethod == 'whatsapp' ? 'واتساب' : 'رسالة نصية';
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('تم إرسال رمز التحقق الجديد'),
+            SnackBar(
+              content: Text('تم إرسال رمز التحقق الجديد عبر $methodText'),
               backgroundColor: Colors.green,
             ),
           );
@@ -339,7 +352,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
                   // OTP input fields
                   Text(
-                    'أدخل رمز التحقق المرسل إلى رقم هاتفك',
+                    'أدخل رمز التحقق المرسل إلى رقم هاتفك عبر ${widget.verificationMethod == 'whatsapp' ? 'واتساب' : 'رسالة نصية'}',
                     style: TextStyle(
                       fontSize: 16,
                       color: Colors.grey[700],
