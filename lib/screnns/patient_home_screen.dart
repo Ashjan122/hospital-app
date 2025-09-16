@@ -10,6 +10,8 @@ import 'package:hospital_app/screnns/login_screen.dart';
 import 'package:hospital_app/screnns/about_screen.dart';
 import 'package:hospital_app/screnns/home_samples_request_screen.dart';
 import 'package:hospital_app/services/central_data_service.dart';
+import 'package:hospital_app/services/presence_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PatientHomeScreen extends StatefulWidget {
   const PatientHomeScreen({super.key});
@@ -32,6 +34,18 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     _loadPatientData();
     _searchController.addListener(_onSearchChanged);
     _checkDatabaseConnection();
+    _initPresence();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowAdDialog());
+  }
+
+  Future<void> _initPresence() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final patientId = prefs.getString('userId') ?? '';
+      if (patientId.isNotEmpty) {
+        await PresenceService.setOnline(patientId: patientId);
+      }
+    } catch (_) {}
   }
 
   Future<void> _checkDatabaseConnection() async {
@@ -61,6 +75,11 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
   @override
   void dispose() {
+    // Mark offline on screen dispose
+    SharedPreferences.getInstance().then((prefs) {
+      final patientId = prefs.getString('userId') ?? '';
+      PresenceService.setOffline(patientId: patientId);
+    });
     _searchController.dispose();
     _debounceTimer?.cancel();
     super.dispose();
@@ -278,6 +297,343 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
+  Future<bool> _openBookingByDoctorName(String doctorName) async {
+    try {
+      String _normalizeName(String s) {
+        final map = {
+          'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ة': 'ه', 'ى': 'ي', 'ئ': 'ي', 'ؤ': 'و', 'ـ': '', 'ً': '', 'ٌ': '', 'ٍ': '', 'َ': '', 'ُ': '', 'ِ': '', 'ّ': ''
+        };
+        String out = s.trim();
+        map.forEach((k, v) => out = out.replaceAll(k, v));
+        out = out.replaceAll(RegExp(r"[^\u0600-\u06FFa-zA-Z0-9 ]"), '');
+        out = out.replaceAll(RegExp(r"\s+"), ' ');
+        return out.toLowerCase();
+      }
+
+      final target = _normalizeName(doctorName.startsWith('د') ? doctorName.substring(1) : doctorName);
+
+      // Search nested collections for doctor by name
+      Future<bool> searchInRoot(String rootCollection) async {
+        final facilities = await FirebaseFirestore.instance
+            .collection(rootCollection)
+            .get();
+
+        for (final facilityDoc in facilities.docs) {
+          final specs = await FirebaseFirestore.instance
+              .collection(rootCollection)
+              .doc(facilityDoc.id)
+              .collection('specializations')
+              .get();
+
+          for (final specDoc in specs.docs) {
+            final doctors = await FirebaseFirestore.instance
+                .collection(rootCollection)
+                .doc(facilityDoc.id)
+                .collection('specializations')
+                .doc(specDoc.id)
+                .collection('doctors')
+                .get();
+
+            for (final d in doctors.docs) {
+              final data = d.data() as Map<String, dynamic>;
+              final docName = (data['docName'] ?? '').toString();
+              if (_normalizeName(docName) != target) continue;
+
+              final workingSchedule = data['workingSchedule'] as Map<String, dynamic>? ?? {};
+
+              if (workingSchedule.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('لا يوجد جدول عمل للطبيب'), backgroundColor: Colors.red),
+                );
+                return false;
+              }
+
+              if (!mounted) return false;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => BookingScreen(
+                    name: docName,
+                    workingSchedule: workingSchedule,
+                    facilityId: facilityDoc.id,
+                    specializationId: specDoc.id,
+                    doctorId: d.id,
+                    showDoctorInfo: true,
+                    doctorSpecialty: (data['specialization'] ?? '').toString(),
+                    centerName: (facilityDoc.data() as Map<String, dynamic>?)?['name'] ?? '',
+                  ),
+                ),
+              );
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+
+      if (await searchInRoot('medicalFacilities')) return true;
+      if (await searchInRoot('facilities')) return true;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('لم يتم العثور على الطبيب: $doctorName'), backgroundColor: Colors.red),
+      );
+      return false;
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر فتح صفحة الحجز: $e'), backgroundColor: Colors.red),
+      );
+      return false;
+    }
+  }
+
+  Future<void> _maybeShowAdDialog() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastShownAdId = prefs.getString('lastShownAdId');
+
+      print('[AD] Checking for ad... lastShownAdId=$lastShownAdId');
+
+      // Primary: ads with show == true
+      QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('ads')
+          .where('show', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        print('[AD] No ads found.');
+        return;
+      }
+
+      final doc = snapshot.docs.first;
+      final data = doc.data() as Map<String, dynamic>;
+      // Use business id field if available, otherwise doc id
+      final adId = (data['id']?.toString().isNotEmpty ?? false) ? data['id'].toString() : doc.id;
+      print('[AD] Found ad id=$adId');
+      if (adId == lastShownAdId) {
+        print('[AD] Already shown, skipping.');
+        return;
+      }
+
+      final tybe = (data['tybe'] ?? '').toString();
+      final title = (data['title'] ?? '').toString();
+      final message = (data['message'] ?? '').toString();
+      final doctorName = (data['doctorNam'] ?? '').toString();
+      final doctorPhotoUrl = (data['doctorPhotoUrl'] ?? '').toString();
+      final centerLogoUrl = (data['centerLogoUrl'] ?? '').toString();
+      final durationStr = (data['duration'] ?? '6').toString();
+      final durationSec = int.tryParse(durationStr) ?? 6;
+      final adFacilityId = (data['facilityId'] ?? '').toString();
+      final adSpecializationId = (data['specializationId'] ?? '').toString();
+      final adCentralDoctorId = (data['centralDoctorId'] ?? '').toString();
+
+      if (!mounted) return;
+      final dialogFuture = showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          bool isLoading = false;
+          return Directionality(
+            textDirection: TextDirection.rtl,
+            child: StatefulBuilder(
+              builder: (ctx2, setState) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                contentPadding: EdgeInsets.zero,
+                content: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              IconButton(
+                                onPressed: () => Navigator.of(ctx).pop(),
+                                icon: const Icon(Icons.close, color: Colors.black54),
+                                splashRadius: 18,
+                              ),
+                              if (centerLogoUrl.isNotEmpty)
+                                CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor: Colors.white,
+                                  backgroundImage: NetworkImage(centerLogoUrl),
+                                ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          if (title.isNotEmpty)
+                            Text(
+                              title,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 18,
+                              ),
+                            ),
+                          if (tybe == 'doctor' && doctorName.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              (doctorName.startsWith('د') ? doctorName : 'د. $doctorName'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFFB71C1C),
+                                fontWeight: FontWeight.w900,
+                                fontSize: 22,
+                              ),
+                            ),
+                          ],
+
+                          const SizedBox(height: 12),
+
+                          if (tybe == 'doctor' && doctorPhotoUrl.isNotEmpty)
+                            Center(
+                              child: Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: const Color(0xFFB71C1C), width: 6),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4.0),
+                                  child: CircleAvatar(
+                                    backgroundImage: NetworkImage(doctorPhotoUrl),
+                                    backgroundColor: Colors.grey[200],
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          const SizedBox(height: 16),
+
+                          if (message.isNotEmpty)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFB71C1C),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                message,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18),
+                              ),
+                            ),
+                          const SizedBox(height: 16),
+                          if (tybe == 'doctor' && doctorName.isNotEmpty)
+                            ElevatedButton(
+                              onPressed: isLoading
+                                  ? null
+                                  : () async {
+                                      if (!mounted) return;
+                                      setState(() => isLoading = true);
+                                      try {
+                                        final results = await CentralDataService.searchDoctorsAndSpecialties(doctorName);
+                                        Map<String, dynamic>? match;
+                                        String _norm(String s) {
+                                          final map = {'أ':'ا','إ':'ا','آ':'ا','ة':'ه','ى':'ي','ئ':'ي','ؤ':'و','ـ':''};
+                                          String out = s.trim();
+                                          map.forEach((k,v){ out = out.replaceAll(k,v); });
+                                          return out.replaceAll(RegExp(r"\s+"), ' ').toLowerCase();
+                                        }
+                                        final target = _norm(doctorName.startsWith('د') ? doctorName.substring(1) : doctorName);
+                                        for (final r in results) {
+                                          if (r['type'] == 'doctor' && _norm(r['name'] ?? '') == target) { match = r; break; }
+                                        }
+                                        match ??= results.cast<Map<String, dynamic>?>().firstWhere(
+                                          (r) => (r?['type'] == 'doctor') && _norm(r?['name'] ?? '').contains(target),
+                                          orElse: () => null,
+                                        );
+
+                                        if (match != null && match!.isNotEmpty) {
+                                          final schedule = match!['workingSchedule'] as Map<String, dynamic>? ?? {};
+                                          if (schedule.isNotEmpty) {
+                                            final facilityId = (match!['facilityId'] ?? '').toString();
+                                            final specializationId = (match!['specializationId'] ?? '').toString();
+                                            final doctorId = (match!['id'] ?? '').toString();
+                                            final centerName = (match!['centerName'] ?? '').toString();
+                                            final specName = (match!['specialization'] ?? '').toString();
+                                            if (!context.mounted) return;
+                                            Navigator.of(ctx).pop();
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) => BookingScreen(
+                                                  name: (match!['name'] ?? doctorName).toString(),
+                                                  workingSchedule: schedule,
+                                                  facilityId: facilityId,
+                                                  specializationId: specializationId,
+                                                  doctorId: doctorId,
+                                                  showDoctorInfo: true,
+                                                  doctorSpecialty: specName,
+                                                  centerName: centerName,
+                                                ),
+                                              ),
+                                            );
+                                            return;
+                                          }
+                                        }
+
+                                        // fallback
+                                        if (!context.mounted) return;
+                                        Navigator.of(ctx).pop();
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => DoctorBookingLoaderTemp(
+                                              name: doctorName,
+                                              facilityId: adFacilityId.isNotEmpty ? adFacilityId : null,
+                                              specializationId: adSpecializationId.isNotEmpty ? adSpecializationId : null,
+                                              centralDoctorId: adCentralDoctorId.isNotEmpty ? adCentralDoctorId : null,
+                                            ),
+                                          ),
+                                        );
+                                      } finally {
+                                        if (context.mounted) setState(() => isLoading = false);
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.grey[300],
+                                foregroundColor: const Color(0xFFB71C1C),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                              ),
+                              child: isLoading
+                                  ? const SizedBox(
+                                      height: 22,
+                                      width: 22,
+                                      child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFB71C1C))),
+                                    )
+                                  : const Text('احجز الآن'),
+                            ),
+
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+
+      await dialogFuture;
+
+      // Mark as shown
+      await prefs.setString('lastShownAdId', adId);
+      print('[AD] Marked ad as shown: $adId');
+    } catch (e) {
+      print('[AD] Error showing ad: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -310,6 +666,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               onPressed: () async {
                 // Clear saved login data
                 final prefs = await SharedPreferences.getInstance();
+                final patientId = prefs.getString('userId') ?? '';
+                await PresenceService.setOffline(patientId: patientId);
                 await prefs.clear();
 
                 // Navigate to login screen
@@ -765,6 +1123,216 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class DoctorBookingLoaderTemp extends StatefulWidget {
+  final String name;
+  final String? facilityId;
+  final String? specializationId;
+  final String? centralDoctorId;
+  const DoctorBookingLoaderTemp({super.key, required this.name, this.facilityId, this.specializationId, this.centralDoctorId});
+
+  @override
+  State<DoctorBookingLoaderTemp> createState() => _DoctorBookingLoaderTempState();
+}
+
+class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
+  @override
+  void initState() {
+    super.initState();
+    _resolveAndOpen();
+  }
+
+  String _normalizeName(String s) {
+    final map = {'أ':'ا','إ':'ا','آ':'ا','ة':'ه','ى':'ي','ئ':'ي','ؤ':'و','ـ':'','ً':'','ٌ':'','ٍ':'','َ':'','ُ':'','ِ':'','ّ':''};
+    String out = s.trim();
+    map.forEach((k,v){ out = out.replaceAll(k,v); });
+    out = out.replaceAll(RegExp(r"[^\u0600-\u06FFa-zA-Z0-9 ]"), '');
+    out = out.replaceAll(RegExp(r"\s+"), ' ');
+    return out.toLowerCase();
+  }
+
+  Future<void> _resolveAndOpen() async {
+    final base = widget.name.trim();
+    final candidates = <String>{
+      base,
+      base.startsWith('د') ? base : 'د. $base',
+      base.startsWith('د') ? base : 'د.$base',
+      base.replaceAll('د. ', 'د.').replaceAll('  ', ' '),
+    };
+    final target = _normalizeName(base.startsWith('د') ? base.substring(1) : base);
+
+    try {
+      // 0) Try same logic as search bar using CentralDataService
+      try {
+        final results = await CentralDataService.searchDoctorsAndSpecialties(base);
+        Map<String, dynamic>? match;
+        for (final r in results) {
+          if ((r['type'] == 'doctor') && _normalizeName(r['name'] ?? '') == target) {
+            match = r; break;
+          }
+        }
+        match ??= results.cast<Map<String, dynamic>?>().firstWhere(
+          (r) => (r?['type'] == 'doctor') && _normalizeName(r?['name'] ?? '').contains(target),
+          orElse: () => null,
+        );
+        if (match != null && match!.isNotEmpty) {
+          final schedule = match['workingSchedule'] as Map<String, dynamic>? ?? {};
+          if (schedule.isNotEmpty && mounted) {
+            final facilityId = (match!['facilityId'] ?? '').toString();
+            final specializationId = (match!['specializationId'] ?? '').toString();
+            final doctorId = (match!['id'] ?? '').toString();
+            final centerName = (match!['centerName'] ?? '').toString();
+            final specName = (match!['specialization'] ?? '').toString();
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => BookingScreen(
+                  name: (match!['name'] ?? base).toString(),
+                  workingSchedule: schedule,
+                  facilityId: facilityId,
+                  specializationId: specializationId,
+                  doctorId: doctorId,
+                  showDoctorInfo: true,
+                  doctorSpecialty: specName,
+                  centerName: centerName,
+                ),
+              ),
+            );
+            return;
+          }
+        }
+      } catch (_) {}
+
+      QueryDocumentSnapshot? hit;
+      // Prefer narrow search in provided path
+      if ((widget.facilityId ?? '').isNotEmpty) {
+        if ((widget.specializationId ?? '').isNotEmpty) {
+          final docs = await FirebaseFirestore.instance
+              .collection('medicalFacilities')
+              .doc(widget.facilityId)
+              .collection('specializations')
+              .doc(widget.specializationId)
+              .collection('doctors')
+              .get();
+          for (final d in docs.docs) {
+            final data = d.data() as Map<String, dynamic>;
+            final n = (data['docName'] ?? '').toString();
+            final centralId = (data['centralDoctorId'] ?? '').toString();
+            if (_normalizeName(n) == target || (widget.centralDoctorId ?? '') == centralId) { hit = d; break; }
+          }
+        } else {
+          // Iterate all specializations under the facility
+          final specs = await FirebaseFirestore.instance
+              .collection('medicalFacilities')
+              .doc(widget.facilityId)
+              .collection('specializations')
+              .get();
+          for (final s in specs.docs) {
+            final docs = await FirebaseFirestore.instance
+                .collection('medicalFacilities')
+                .doc(widget.facilityId)
+                .collection('specializations')
+                .doc(s.id)
+                .collection('doctors')
+                .get();
+            for (final d in docs.docs) {
+              final data = d.data() as Map<String, dynamic>;
+              final n = (data['docName'] ?? '').toString();
+              final centralId = (data['centralDoctorId'] ?? '').toString();
+              if (_normalizeName(n) == target || (widget.centralDoctorId ?? '') == centralId) { hit = d; break; }
+            }
+            if (hit != null) break;
+          }
+        }
+      }
+
+      // If still not found and we have centralDoctorId, search by it
+      if (hit == null && (widget.centralDoctorId ?? '').isNotEmpty) {
+        final cgCentral = await FirebaseFirestore.instance
+            .collectionGroup('doctors')
+            .where('centralDoctorId', isEqualTo: widget.centralDoctorId)
+            .limit(1)
+            .get();
+        if (cgCentral.docs.isNotEmpty) hit = cgCentral.docs.first;
+      }
+      // Try exact candidates
+      for (final c in candidates) {
+        final cgTry = await FirebaseFirestore.instance
+            .collectionGroup('doctors')
+            .where('docName', isEqualTo: c)
+            .limit(1)
+            .get();
+        if (cgTry.docs.isNotEmpty) { hit = cgTry.docs.first; break; }
+      }
+      // Fallback: normalize compare (scan bigger window)
+      if (hit == null) {
+        final cg2 = await FirebaseFirestore.instance
+            .collectionGroup('doctors')
+            .limit(2000)
+            .get();
+        for (final d in cg2.docs) {
+          final n = (d.data()['docName'] ?? '').toString();
+          final norm = _normalizeName(n);
+          if (norm == target || norm.contains(target) || target.contains(norm)) { hit = d; break; }
+        }
+      }
+
+      if (hit != null) {
+        final data = hit.data() as Map<String, dynamic>;
+        final schedule = data['workingSchedule'] as Map<String, dynamic>? ?? {};
+        if (schedule.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('لا يوجد جدول عمل للطبيب'), backgroundColor: Colors.red),
+            );
+          }
+          Navigator.of(context).pop();
+          return;
+        }
+
+        // Derive facility and specialization from path
+        final doctorRef = hit.reference; // .../specializations/{specId}/doctors/{docId}
+        final specRef = doctorRef.parent.parent!; // specializations/{specId}
+        final facilityRef = specRef.parent.parent!; // root/{facilityId}
+        final specSnap = await specRef.get();
+        final facilitySnap = await facilityRef.get();
+        final specName = (specSnap.data() as Map<String, dynamic>?)?['specName']?.toString() ?? '';
+        final centerName = (facilitySnap.data() as Map<String, dynamic>?)?['name']?.toString() ?? '';
+
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => BookingScreen(
+              name: (data['docName'] ?? base).toString(),
+              workingSchedule: schedule,
+              facilityId: facilityRef.id,
+              specializationId: specRef.id,
+              doctorId: doctorRef.id,
+              showDoctorInfo: true,
+              doctorSpecialty: specName, // pass specialization name instead of id
+              centerName: centerName,
+            ),
+          ),
+        );
+        return;
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('لم يتم العثور على الطبيب: ${widget.name}'), backgroundColor: Colors.red),
+    );
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2FBDAF))),
       ),
     );
   }

@@ -61,23 +61,36 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
       patientEmail = prefs.getString('userEmail');
       patientId = prefs.getString('userId');
     });
+    
+    print('👤 بيانات المريض:');
+    print('   - البريد الإلكتروني: $patientEmail');
+    print('   - معرف المريض: $patientId');
+    
     // تحميل البيانات فوراً بعد الحصول على معرف المريض
-    if (patientId != null) {
+    if (patientId != null && patientId!.isNotEmpty) {
       await _fetchBookings();
+    } else {
+      print('❌ معرف المريض فارغ أو غير موجود');
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
   Future<void> _fetchBookings() async {
     if (patientId == null) {
+      print('❌ معرف المريض غير موجود');
       setState(() {
         _isLoading = false;
       });
       return;
     }
 
+    print('🔍 بدء تحميل الحجوزات للمريض: $patientId');
+
     // فحص Cache أولاً
     if (_isCacheValid()) {
-      print('استخدام Cache للحجوزات - تحميل فوري');
+      print('✅ استخدام Cache للحجوزات - تحميل فوري');
       setState(() {
         _bookings = List.from(_bookingsCache);
         _isLoading = false;
@@ -90,26 +103,56 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
         _isLoading = true;
       });
 
-      print('تحميل الحجوزات من قاعدة البيانات...');
+      print('📡 تحميل الحجوزات من قاعدة البيانات...');
 
-      // استخدام استعلام محسن للحصول على الحجوزات بشكل أسرع
-      // البحث في المرافق المتاحة فقط
-      final facilitiesSnapshot = await FirebaseFirestore.instance
-          .collection('medicalFacilities')
-          .where('available', isEqualTo: true) // فقط المرافق المتاحة
-          .limit(10) // تحديد عدد المرافق للبحث
-          .get()
-          .timeout(const Duration(seconds: 5));
-
+      // محاولة البحث في مجموعة medicalFacilities أولاً
       List<Map<String, dynamic>> allBookings = [];
-      List<Future<void>> futures = [];
+      
+      try {
+        // البحث في المرافق المتاحة
+        final facilitiesSnapshot = await FirebaseFirestore.instance
+            .collection('medicalFacilities')
+            .get()
+            .timeout(const Duration(seconds: 10));
 
-      for (var facilityDoc in facilitiesSnapshot.docs) {
-        futures.add(_fetchBookingsFromFacility(facilityDoc, allBookings));
+        print('🏥 تم العثور على ${facilitiesSnapshot.docs.length} مرفق طبي');
+
+        List<Future<void>> futures = [];
+
+        for (var facilityDoc in facilitiesSnapshot.docs) {
+          futures.add(_fetchBookingsFromFacility(facilityDoc, allBookings));
+        }
+
+        // انتظار جميع العمليات في نفس الوقت
+        await Future.wait(futures);
+        print('📋 تم جلب ${allBookings.length} حجز من medicalFacilities');
+      } catch (e) {
+        print('⚠️ خطأ في جلب الحجوزات من medicalFacilities: $e');
       }
 
-      // انتظار جميع العمليات في نفس الوقت
-      await Future.wait(futures);
+      // إذا لم نجد حجوزات، جرب البحث في مجموعة bookings مباشرة
+      if (allBookings.isEmpty) {
+        try {
+          print('🔄 البحث في مجموعة bookings مباشرة...');
+          final bookingsSnapshot = await FirebaseFirestore.instance
+              .collection('bookings')
+              .where('patientId', isEqualTo: patientId)
+              .get()
+              .timeout(const Duration(seconds: 10));
+
+          print('📋 تم العثور على ${bookingsSnapshot.docs.length} حجز في مجموعة bookings');
+
+          for (var bookingDoc in bookingsSnapshot.docs) {
+            final bookingData = bookingDoc.data();
+            allBookings.add({
+              ...bookingData,
+              'id': bookingDoc.id,
+            });
+          }
+        } catch (e) {
+          print('⚠️ خطأ في جلب الحجوزات من مجموعة bookings: $e');
+        }
+      }
 
       // ترتيب الحجوزات حسب التاريخ والوقت (الأحدث أولاً)
       allBookings.sort((a, b) {
@@ -132,14 +175,18 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
       // حفظ في Cache
       _bookingsCache = List.from(allBookings);
       _lastCacheTime = DateTime.now();
-      print('تم حفظ ${allBookings.length} حجز في Cache');
+      print('💾 تم حفظ ${allBookings.length} حجز في Cache');
 
       setState(() {
         _bookings = allBookings;
         _isLoading = false;
       });
+
+      if (allBookings.isEmpty) {
+        print('ℹ️ لا توجد حجوزات للمريض');
+      }
     } catch (e) {
-      print('خطأ في تحميل الحجوزات: $e');
+      print('❌ خطأ في تحميل الحجوزات: $e');
       setState(() {
         _isLoading = false;
       });
@@ -464,6 +511,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
             IconButton(
               icon: const Icon(Icons.refresh, color: Color(0xFF2FBDAF)),
               onPressed: () {
+                print('🔄 تحديث يدوي للحجوزات...');
                 clearBookingsCache();
                 _fetchBookings();
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -766,7 +814,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
               .collection('doctors')
               .doc(booking['doctorId'])
               .get();
-          final doctorData = doctorSnap.data() as Map<String, dynamic>?;
+          final doctorData = doctorSnap.data();
           final workingSchedule = (doctorData?['workingSchedule'] as Map<String, dynamic>?) ?? {};
           if (workingSchedule.isNotEmpty) {
             // يوم الحجز بصيغة عربية
@@ -818,7 +866,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                 String bookedTimeStr = (booking['time'] ?? '').toString();
                 // تطبيع الوقت: 16 => 16:00
                 if (bookedTimeStr.isNotEmpty && !bookedTimeStr.contains(':')) {
-                  final onlyDigits = RegExp(r'^\d{1,2}  $').hasMatch(bookedTimeStr);
+                  final onlyDigits = RegExp(r'^\d{1,2}$').hasMatch(bookedTimeStr);
                   if (onlyDigits) {
                     bookedTimeStr = bookedTimeStr.padLeft(2, '0') + ':00';
                   }

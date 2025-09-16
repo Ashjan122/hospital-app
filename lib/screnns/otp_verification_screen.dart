@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'package:hospital_app/screnns/patient_home_screen.dart';
 import 'package:sms_autofill/sms_autofill.dart';
+import 'package:hospital_app/services/presence_service.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -17,6 +18,7 @@ class OTPVerificationScreen extends StatefulWidget {
   final DateTime initialOtpCreatedAt;
   final Country country;
   final String verificationMethod;
+  final bool isLoginFlow;
 
   const OTPVerificationScreen({
     super.key,
@@ -27,6 +29,7 @@ class OTPVerificationScreen extends StatefulWidget {
     required this.initialOtpCreatedAt,
     required this.country,
     required this.verificationMethod,
+    this.isLoginFlow = false,
   });
 
   @override
@@ -52,7 +55,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   // Current OTP state
   late String _currentOtp;
   late DateTime _currentOtpCreatedAt;
-  String? _appSignature;
 
   @override
   void initState() {
@@ -80,7 +82,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
   Future<void> _initOtpAutoFill() async {
     try {
-      _appSignature = await SmsAutoFill().getAppSignature;
       // Listen for incoming SMS code (Android)
       await SmsAutoFill().listenForCode();
       SmsAutoFill().code.listen((code) {
@@ -225,8 +226,13 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       bool isValid = SMSService.verifyOTP(enteredOTP, _currentOtp, _currentOtpCreatedAt);
 
       if (isValid) {
-        // Create the patient account
-        await _createPatientAccount();
+        if (widget.isLoginFlow) {
+          // Login flow: find patient and save login data
+          await _handleLoginVerification(enteredOTP);
+        } else {
+          // Create the patient account
+          await _createPatientAccount();
+        }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -250,6 +256,102 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _handleLoginVerification(String enteredOTP) async {
+    try {
+      // Search for patient by phone number
+      String phoneInput = widget.phoneNumber;
+      String digitsOnly = phoneInput.replaceAll(RegExp(r'[^0-9]'), '');
+      
+      List<String> possibleNumbers = [];
+      possibleNumbers.add(digitsOnly); // Add the original formatted number
+      
+      // Try different country codes
+      for (Country country in Country.countries) {
+        String countryCode = country.dialCode.replaceAll('+', '');
+        if (digitsOnly.startsWith(countryCode)) {
+          possibleNumbers.add(digitsOnly);
+          continue;
+        }
+        String withCountryCode = countryCode + digitsOnly;
+        possibleNumbers.add(withCountryCode);
+        if (digitsOnly.startsWith('0')) {
+          String withoutLeadingZero = digitsOnly.substring(1);
+          String withCountryCodeNoZero = countryCode + withoutLeadingZero;
+          possibleNumbers.add(withCountryCodeNoZero);
+        }
+      }
+      possibleNumbers = possibleNumbers.toSet().toList();
+      
+      bool found = false;
+      String? foundPhoneNumber;
+      DocumentSnapshot? foundPatientDoc;
+      
+      for (String pNum in possibleNumbers) {
+        final patientsQuery = await FirebaseFirestore.instance
+            .collection('patients')
+            .where('phone', isEqualTo: pNum)
+            .get();
+        
+        if (patientsQuery.docs.isNotEmpty) {
+          found = true;
+          foundPhoneNumber = pNum;
+          foundPatientDoc = patientsQuery.docs.first;
+          break;
+        }
+      }
+      
+      if (found && foundPatientDoc != null) {
+        final patientData = foundPatientDoc.data() as Map<String, dynamic>;
+        final patientName = patientData['name'] ?? 'مريض عزيز';
+        final patientId = foundPatientDoc.id;
+        
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('isLoggedIn', true);
+        await prefs.setString('userType', 'patient');
+        await prefs.setString('userEmail', foundPhoneNumber!);
+        await prefs.setString('userName', patientName);
+        await prefs.setString('userId', patientId);
+        await prefs.setString('userPhone', foundPhoneNumber);
+        await prefs.setBool('hasRegisteredOnce', true);
+        // Presence update
+        await PresenceService.setLoginTimestamp(patientId: patientId);
+        await PresenceService.setOnline(patientId: patientId);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تم تسجيل الدخول بنجاح!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+            (Route<dynamic> route) => false,
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('رقم الهاتف غير مسجل'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ في تسجيل الدخول: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -297,6 +399,10 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       await prefs.setString('userEmail', widget.phoneNumber);
       await prefs.setString('userId', patientId);
       await prefs.setString('userPhone', widget.phoneNumber);
+      await prefs.setBool('hasRegisteredOnce', true);
+      // Presence update
+      await PresenceService.setLoginTimestamp(patientId: patientId);
+      await PresenceService.setOnline(patientId: patientId);
 
       if (mounted) {
         // Go to home screen immediately

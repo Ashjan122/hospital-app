@@ -4,6 +4,7 @@ import 'package:hospital_app/services/sms_service.dart';
 import 'package:hospital_app/services/whatsapp_service.dart';
 import 'package:hospital_app/models/country.dart';
 import 'package:hospital_app/screnns/otp_verification_screen.dart';
+import 'package:hospital_app/screnns/login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -556,7 +557,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                             TextButton(
                               onPressed: () {
-                                Navigator.of(context).pop();
+                                Navigator.of(context).pushReplacement(
+                                  MaterialPageRoute(
+                                    builder: (context) => const LoginScreen(),
+                                  ),
+                                );
                               },
                               child: const Text(
                                 'تسجيل الدخول',

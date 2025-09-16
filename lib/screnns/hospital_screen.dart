@@ -202,7 +202,7 @@ class _HospitalScreenState extends State<HospitalScreen> {
               onPressed: () {
                 Navigator.pop(context);
               },
-              icon: Icon(Icons.arrow_back, color: Color(0xFF2FBDAF)),
+              icon: Icon(Icons.arrow_forward, color: Color(0xFF2FBDAF)),
             ),
         ],
         title: _isSearching

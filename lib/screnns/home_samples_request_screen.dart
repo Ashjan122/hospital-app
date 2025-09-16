@@ -426,6 +426,8 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
     switch (status) {
       case 'pending':
         return Colors.orange;
+      case 'received':
+        return Colors.blue;
       case 'completed':
         return Colors.blue;
       default:
@@ -437,6 +439,8 @@ class _HomeSamplesRequestScreenState extends State<HomeSamplesRequestScreen> {
     switch (status) {
       case 'pending':
         return 'قيد الانتظار';
+      case 'received':
+        return 'تم الاستلام';
       case 'completed':
         return 'تم الاستلام';
       default:

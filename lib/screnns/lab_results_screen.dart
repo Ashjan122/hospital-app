@@ -1532,11 +1532,11 @@ Al-Roomy Medical Center
                                 if (!_isReceiptFieldFocused || _selectedSearchMethod == 0)
                                   Text(
                                     _selectedSearchMethod == 0 
-                                        ? 'اضغط على "الاستعلام عن النتيجة" للعثور على نتائج المختبر الخاصة بك'
+                                        ? 'اضغط على "الاستعلام عن النتيجة" للعثور على نتائج المختبر المرتبطة برقم هاتفك'
                                         : 'أدخل رقم الإيصال واضغط على "البحث" للعثور على نتائج المختبر',
                                     style: TextStyle(
                                       fontSize: 16,
-                                      color: Colors.grey[600],
+                                      color: const Color.fromARGB(255, 250, 152, 5),
                                       height: 1.5,
                                     ),
                                     textAlign: TextAlign.center,
