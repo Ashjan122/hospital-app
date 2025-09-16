@@ -86,61 +86,29 @@ class _BookingScreenState extends State<BookingScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
-    final todayStr = intl.DateFormat('yyyy-MM-dd').format(today);
     final tomorrowStr = intl.DateFormat('yyyy-MM-dd').format(tomorrow);
 
     final Set<String> allowed = {};
 
-    // التحقق من اليوم الحالي - يجب أن تكون الفترات صالحة حسب الوقت الحالي
-    if (_hasScheduleOn(today) && !blockedDates.contains(todayStr)) {
-      final dayName = intl.DateFormat('EEEE', 'ar').format(today).trim();
-      final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
-      
-      bool hasValidPeriod = false;
-      
-      // التحقق من الفترة الصباحية
-      final morning = schedule?['morning'] as Map<String, dynamic>?;
-      if (morning != null && morning.isNotEmpty) {
-        if (_isPeriodValid(morning, 'morning')) {
-          hasValidPeriod = true;
-        }
-      }
-      
-      // التحقق من الفترة المسائية
-      final evening = schedule?['evening'] as Map<String, dynamic>?;
-      if (evening != null && evening.isNotEmpty) {
-        if (_isPeriodValid(evening, 'evening')) {
-          hasValidPeriod = true;
-        }
-      }
-      
-      if (hasValidPeriod) {
-        allowed.add(todayStr);
-      }
-    }
-    
-    // التحقق من الغد - جميع الفترات متاحة بغض النظر عن الوقت الحالي
+    // السماح بالحجز للغد فقط
     if (_hasScheduleOn(tomorrow) && !blockedDates.contains(tomorrowStr)) {
-      // للغد، نتحقق من أن له جدول عمل صحيح (أي فترة صباحية أو مسائية)
       final dayName = intl.DateFormat('EEEE', 'ar').format(tomorrow).trim();
       final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
-      
+
       bool hasValidPeriod = false;
-      
-      // التحقق من الفترة الصباحية
+
       final morning = schedule?['morning'] as Map<String, dynamic>?;
       if (morning != null && morning.isNotEmpty) {
         hasValidPeriod = true;
       }
-      
-      // التحقق من الفترة المسائية
+
       final evening = schedule?['evening'] as Map<String, dynamic>?;
       if (evening != null && evening.isNotEmpty) {
         hasValidPeriod = true;
       }
-      
+
       if (hasValidPeriod) {
-      allowed.add(tomorrowStr);
+        allowed.add(tomorrowStr);
       }
     }
 
@@ -397,57 +365,25 @@ class _BookingScreenState extends State<BookingScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
-    
-    // تحويل التواريخ إلى نصوص للمقارنة
-    final todayStr = intl.DateFormat('yyyy-MM-dd').format(today);
-    final tomorrowStr = intl.DateFormat('yyyy-MM-dd').format(tomorrow);
-    final selectedDateStr = intl.DateFormat('yyyy-MM-dd').format(date);
-    
-    // التحقق من أن التاريخ هو اليوم الحالي أو الغد
-    if (selectedDateStr == todayStr) {
-      // اليوم الحالي - الحجز متاح فقط للفترة المسائية
-      final dayName = intl.DateFormat('EEEE', 'ar').format(today).trim();
-      final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
-      
-      if (schedule == null) return false;
-      
-      final evening = schedule['evening'] as Map<String, dynamic>?;
-      
-      // التحقق من الفترة المسائية فقط
-      if (evening != null && evening.isNotEmpty) {
-        if (_isPeriodValid(evening, 'evening')) {
-          return true;
-        }
-      }
-      
+
+    // يسمح بالحجز للغد فقط
+    if (intl.DateFormat('yyyy-MM-dd').format(date) != intl.DateFormat('yyyy-MM-dd').format(tomorrow)) {
       return false;
-    } else if (selectedDateStr == tomorrowStr) {
-      // الغد - نتحقق من أن له جدول عمل
-      final dayName = intl.DateFormat('EEEE', 'ar').format(tomorrow).trim();
-      final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
-      
-      if (schedule == null) return false;
-      
-      final morning = schedule['morning'] as Map<String, dynamic>?;
-      final evening = schedule['evening'] as Map<String, dynamic>?;
-      
-      // التحقق من وجود أي فترة (صباحية أو مسائية)
-      final hasMorning = morning != null && morning.isNotEmpty;
-      final hasEvening = evening != null && evening.isNotEmpty;
-      
-      return hasMorning || hasEvening;
     }
-    
-    // باقي الأيام غير متاحة للحجز
-    return false;
+
+    final dayName = intl.DateFormat('EEEE', 'ar').format(tomorrow).trim();
+    final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
+    if (schedule == null) return false;
+
+    final morning = schedule['morning'] as Map<String, dynamic>?;
+    final evening = schedule['evening'] as Map<String, dynamic>?;
+    final hasMorning = morning != null && morning.isNotEmpty;
+    final hasEvening = evening != null && evening.isNotEmpty;
+    return hasMorning || hasEvening;
   }
 
   // دالة جديدة لتحديد الفترة المناسبة بناءً على الوقت الحالي
   String? _getAppropriateShift(DateTime date) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final isToday = intl.DateFormat('yyyy-MM-dd').format(date) == intl.DateFormat('yyyy-MM-dd').format(today);
-    
     final dayName = intl.DateFormat('EEEE', 'ar').format(date).trim();
     final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
     
@@ -459,26 +395,15 @@ class _BookingScreenState extends State<BookingScreen> {
     final hasMorning = morning != null && morning.isNotEmpty;
     final hasEvening = evening != null && evening.isNotEmpty;
     
-    // إذا كان اليوم الحالي
-      if (isToday) {
-      // اليوم الحالي - الحجز متاح فقط للفترة المسائية
-      if (hasEvening && _isPeriodValid(evening, 'evening')) {
-        return 'evening';
-      }
-      return null; // لا توجد فترة مسائية صالحة
-      } else {
-      // الغد وما بعده - نطبق المنطق العادي
-      // إذا كان هناك فترة واحدة فقط
-      if (hasMorning && !hasEvening) {
-        return 'morning';
+    // نطبق منطق الغد فقط: إن كانت فترة واحدة أعدها، وإن كانت فترتان اترك الاختيار للمستخدم
+    if (hasMorning && !hasEvening) {
+      return 'morning';
     } else if (!hasMorning && hasEvening) {
-        return 'evening';
+      return 'evening';
     } else if (hasMorning && hasEvening) {
-        // إذا كان هناك فترتين - لا نحدد فترة، نترك المستخدم يختار
-        return null;
-      }
+      return null;
     }
-    
+
     return null;
   }
 
@@ -528,57 +453,26 @@ class _BookingScreenState extends State<BookingScreen> {
       print('workingSchedule فارغ أو غير محدد أو غير موجود في قاعدة البيانات');
       return dates;
     }
-    
-    // عرض جميع الأيام التي لها جدول عمل (لمدة 7 أيام)
-    for (int i = 0; i < 7; i++) {
-      final day = now.add(Duration(days: i));
+
+    // عرض جميع الأيام التي لها جدول عمل خلال 7 أيام بدءاً من الغد، حتى لو لم تكن قابلة للحجز
+    // ملاحظة: استخدام i من 1 إلى 7 يضمن ظهور نفس يوم الأسبوع القادم
+    for (int i = 1; i <= 7; i++) {
+      final day = DateTime(now.year, now.month, now.day).add(Duration(days: i));
       final dateStr = day.toIso8601String().split('T')[0];
+      if (blockedDates.contains(dateStr)) continue;
+
       final name = intl.DateFormat('EEEE', 'ar').format(day).trim();
       final schedule = widget.workingSchedule[name];
-      
-      if (blockedDates.contains(dateStr)) {
-        continue;
-      }
-      
       if (schedule != null && schedule is Map<String, dynamic>) {
         final morning = schedule['morning'] as Map<String, dynamic>?;
         final evening = schedule['evening'] as Map<String, dynamic>?;
-        
-        bool hasValidPeriod = false;
-        
-        // التحقق من الفترة الصباحية
-        if (morning != null && morning.isNotEmpty) {
-          if (i == 0) { // اليوم الحالي - نتحقق من الوقت الحالي
-            if (_isPeriodValid(morning, 'morning')) {
-              hasValidPeriod = true;
-            }
-          } else { // الغد وما بعده - لا نتحقق من الوقت الحالي
-            hasValidPeriod = true;
-          }
-        }
-        
-        // التحقق من الفترة المسائية
-        if (evening != null && evening.isNotEmpty) {
-          if (i == 0) { // اليوم الحالي - نتحقق من الوقت الحالي
-            if (_isPeriodValid(evening, 'evening')) {
-              hasValidPeriod = true;
-            }
-          } else { // الغد وما بعده - لا نتحقق من الوقت الحالي
-            hasValidPeriod = true;
-          }
-        }
-        
-        // اليوم الحالي - نضيفه حتى لو كان يعمل فترة صباحية فقط (للعرض فقط)
-        if (i == 0 && (morning != null && morning.isNotEmpty)) {
-          hasValidPeriod = true;
-        }
-        
-        if (hasValidPeriod) {
+        final hasAnyPeriod = (morning != null && morning.isNotEmpty) || (evening != null && evening.isNotEmpty);
+        if (hasAnyPeriod) {
           dates.add(day);
         }
       }
     }
-    
+
     return dates;
   }
 
@@ -876,7 +770,7 @@ class _BookingScreenState extends State<BookingScreen> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'ملاحظة: يمكنك الحجز في اليوم الحالي (الفترة المسائية فقط) أو الحجز لليوم التالي',
+                        'ملاحظة: الحجز متاح لليوم التالي فقط',
                         style: TextStyle(fontSize: 12, color: Colors.red[600]),
                       ),
                     ),

@@ -801,13 +801,13 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
       final String filePath = '${appDocDir.path}/booking_confirmation.pdf';
       final File file = File(filePath);
       
-      // حساب وقت بداية الفترة للطبيب في يوم الحجز
+      // حساب وقت الحضور: أول حجز للطبيب في يوم الحجز (ليس أول حجز للمريض)
       String? periodStartTime;
       try {
         if (booking['facilityId'] != null && booking['specializationId'] != null && booking['doctorId'] != null) {
-          // المسار: facilities/{facilityId}/specializations/{specializationId}/doctors/{doctorId}
+          // المسار الصحيح لبيانات الطبيب
           final doctorSnap = await FirebaseFirestore.instance
-              .collection('facilities')
+              .collection('medicalFacilities')
               .doc(booking['facilityId'])
               .collection('specializations')
               .doc(booking['specializationId'])
@@ -858,59 +858,71 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
               }
             }
             if (schedule != null) {
-              // 1) إذا وُجدت الفترة المحددة مباشرة
-              if (booking['period'] != null && schedule[booking['period']] != null) {
-                periodStartTime = schedule[booking['period']]['start'];
-              } else {
-                // 2) محاولة الاستدلال من وقت الحجز
+              // تحديد الفترة الهدف من بيانات الحجز أو الاستدلال من الوقت
+              String targetPeriod = (booking['period']?.toString().isNotEmpty ?? false) ? booking['period'].toString() : 'evening';
+              if (booking['period'] == null) {
+                // محاولة الاستدلال من وقت الحجز
                 String bookedTimeStr = (booking['time'] ?? '').toString();
-                // تطبيع الوقت: 16 => 16:00
-                if (bookedTimeStr.isNotEmpty && !bookedTimeStr.contains(':')) {
-                  final onlyDigits = RegExp(r'^\d{1,2}$').hasMatch(bookedTimeStr);
-                  if (onlyDigits) {
-                    bookedTimeStr = bookedTimeStr.padLeft(2, '0') + ':00';
-                  }
+                if (bookedTimeStr.isNotEmpty && !bookedTimeStr.contains(':') && RegExp(r'^\d{1,2}$').hasMatch(bookedTimeStr)) {
+                  bookedTimeStr = bookedTimeStr.padLeft(2, '0') + ':00';
                 }
-                final String? eveningStart = schedule['evening']?['start']?.toString();
-                final String? eveningEnd = schedule['evening']?['end']?.toString();
-                final String? morningStart = schedule['morning']?['start']?.toString();
-                final String? morningEnd = schedule['morning']?['end']?.toString();
-
                 DateTime? _timeOf(String? hhmm) {
                   if (hhmm == null || !hhmm.contains(':')) return null;
                   final parts = hhmm.split(':');
                   return DateTime(bookingDate.year, bookingDate.month, bookingDate.day,
                       int.tryParse(parts[0]) ?? 0, int.tryParse(parts[1]) ?? 0);
                 }
-
                 final DateTime? bookedTime = _timeOf(bookedTimeStr);
-                final DateTime? eveStart = _timeOf(eveningStart);
-                final DateTime? eveEnd = _timeOf(eveningEnd);
-                final DateTime? morStart = _timeOf(morningStart);
-                final DateTime? morEnd = _timeOf(morningEnd);
+                final String? eveningStart = schedule['evening']?['start']?.toString();
+                final String? eveningEnd = schedule['evening']?['end']?.toString();
+                final String? morningStart = schedule['morning']?['start']?.toString();
+                final String? morningEnd = schedule['morning']?['end']?.toString();
+                DateTime? _toDT(String? t) => (t == null || !t.contains(':')) ? null : DateTime(bookingDate.year, bookingDate.month, bookingDate.day, int.tryParse(t.split(':')[0]) ?? 0, int.tryParse(t.split(':')[1]) ?? 0);
+                final eveStart = _toDT(eveningStart);
+                final eveEnd = _toDT(eveningEnd);
+                final morStart = _toDT(morningStart);
+                final morEnd = _toDT(morningEnd);
+                bool inRange(DateTime? t, DateTime? s, DateTime? e) => t != null && s != null && e != null && (t.isAtSameMomentAs(s) || t.isAfter(s)) && t.isBefore(e);
+                if (bookedTime != null && inRange(bookedTime, morStart, morEnd)) targetPeriod = 'morning';
+                if (bookedTime != null && inRange(bookedTime, eveStart, eveEnd)) targetPeriod = 'evening';
+              }
 
-                bool inRange(DateTime? t, DateTime? s, DateTime? e) {
-                  if (t == null || s == null || e == null) return false;
-                  return (t.isAtSameMomentAs(s) || t.isAfter(s)) && t.isBefore(e);
+              // استعلام: أول موعد للطبيب في نفس اليوم والفترة
+              try {
+                final qs = await FirebaseFirestore.instance
+                    .collection('medicalFacilities')
+                    .doc(booking['facilityId'])
+                    .collection('specializations')
+                    .doc(booking['specializationId'])
+                    .collection('doctors')
+                    .doc(booking['doctorId'])
+                    .collection('appointments')
+                    .where('date', isEqualTo: booking['date'])
+                    .where('period', isEqualTo: targetPeriod)
+                    .orderBy('time')
+                    .limit(1)
+                    .get();
+                if (qs.docs.isNotEmpty) {
+                  String t = (qs.docs.first.data()['time'] ?? '').toString();
+                  if (t.isNotEmpty && !t.contains(':') && RegExp(r'^\d{1,2}$').hasMatch(t)) {
+                    t = t.padLeft(2, '0') + ':00';
+                  }
+                  if (t.isNotEmpty) {
+                    periodStartTime = t;
+                  }
                 }
+              } catch (_) {}
 
-                if (bookedTime != null && inRange(bookedTime, eveStart, eveEnd)) {
-                  periodStartTime = eveningStart;
-                } else if (bookedTime != null && inRange(bookedTime, morStart, morEnd)) {
-                  periodStartTime = morningStart;
-                } else if (eveningStart != null) {
-                  // 3) إذا لا يمكن الاستدلال، واختيار المساء إن كان هو المتاح الوحيد (كما في بياناتك)
-                  periodStartTime = eveningStart;
-                } else if (morningStart != null) {
-                  periodStartTime = morningStart;
-                }
+              // إن لم نجد من الاستعلام، يمكن استخدام بداية الفترة من الجدول كحل احتياطي
+              if ((periodStartTime == null || periodStartTime.isEmpty) && booking['period'] != null && schedule[booking['period']] != null) {
+                periodStartTime = schedule[booking['period']]['start'];
               }
             }
           }
         }
       } catch (_) {}
 
-      // Fallback: إذا تعذر الحصول على start من جدول العمل، استخدم أول وقت حجز في نفس اليوم والفترة للطبيب
+      // Fallback: إذا تعذر الحصول على أول وقت من استعلام المواعيد أو الجدول، استخدم أول وقت حجز في نفس اليوم والفترة للطبيب من مجموعة bookings العامة (إن وُجدت)
       try {
         if ((periodStartTime == null || periodStartTime.isEmpty) &&
             booking['doctorId'] != null &&
@@ -944,7 +956,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
         // تجاهل أي أخطاء في الاستعلام الاحتياطي
       }
 
-      // Fallback إضافي: استخدام الحجوزات المحمّلة في الشاشة لاستخراج أول وقت لنفس الطبيب/اليوم/الفترة
+      // Fallback إضافي: استخدام حجوزات هذه الشاشة (خاصة بالمريض) كحل أخير لاشتقاق وقت قريب منطقي
       if ((periodStartTime == null || periodStartTime.isEmpty)) {
         try {
           String targetPeriod = (booking['period']?.toString().isNotEmpty ?? false)

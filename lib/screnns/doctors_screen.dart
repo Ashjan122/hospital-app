@@ -66,25 +66,35 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
       return isActive == true;
     }).toList();
     
-    // ترتيب الأطباء حسب أيام العمل
-    activeDoctors.sort((a, b) {
+    // ترتيب الأطباء حسب أقرب يوم عمل قادم: غداً أولاً ثم بعد غد وهكذا
+    final listToSort = List<QueryDocumentSnapshot>.from(activeDoctors);
+    listToSort.sort((a, b) {
       final aData = a.data() as Map<String, dynamic>;
       final bData = b.data() as Map<String, dynamic>;
-      
+
       final aWorkingDays = _getWorkingDaysList(aData['workingSchedule'] ?? {});
       final bWorkingDays = _getWorkingDaysList(bData['workingSchedule'] ?? {});
-      
+
+      final aOffset = _getNextWorkingOffset(aWorkingDays);
+      final bOffset = _getNextWorkingOffset(bWorkingDays);
+      if (aOffset != bOffset) return aOffset.compareTo(bOffset);
+
+      // تعادل: أولوية غداً ثم اليوم ثم بقية الأيام
       final aPriority = _getWorkingDaysPriority(aWorkingDays);
       final bPriority = _getWorkingDaysPriority(bWorkingDays);
-      
-      return aPriority.compareTo(bPriority);
+      if (aPriority != bPriority) return aPriority.compareTo(bPriority);
+
+      // تعادل نهائي: الاسم الأبجدي
+      final aName = (aData['docName'] ?? '').toString();
+      final bName = (bData['docName'] ?? '').toString();
+      return aName.compareTo(bName);
     });
     
     if (_searchQuery.isEmpty) {
-      return activeDoctors;
+      return listToSort;
     }
     
-    return activeDoctors.where((doctor) {
+    return listToSort.where((doctor) {
       final data = doctor.data() as Map<String, dynamic>;
       final doctorName = data['docName']?.toString().toLowerCase() ?? '';
       final searchLower = _searchQuery.toLowerCase();
@@ -118,7 +128,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     return workingDays;
   }
 
-  // دالة لحساب أولوية أيام العمل
+  // دالة لحساب أولوية أيام العمل (غداً أولاً ثم اليوم)
   int _getWorkingDaysPriority(List<String> workingDays) {
     if (workingDays.isEmpty) {
       return 999; // أقل أولوية للأطباء بدون أيام عمل
@@ -128,16 +138,16 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     final today = _getArabicDayName(now.weekday);
     final tomorrow = _getArabicDayName(now.weekday == 7 ? 1 : now.weekday + 1);
 
-    // أولوية 1: يعمل اليوم
-    if (workingDays.contains(today)) {
+    // أولوية 1: يعمل غداً
+    if (workingDays.contains(tomorrow)) {
       return 1;
     }
-    
-    // أولوية 2: يعمل غداً
-    if (workingDays.contains(tomorrow)) {
+
+    // أولوية 2: يعمل اليوم
+    if (workingDays.contains(today)) {
       return 2;
     }
-    
+
     // أولوية 3: يعمل في الأيام القادمة
     return 3;
   }
@@ -210,6 +220,18 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     }
     
     return result;
+  }
+
+  // يحسب أقرب يوم عمل قادم للطبيب بالنسبة لليوم الحالي (1 = غداً، 2 = بعد غد، ... حتى 7)
+  int _getNextWorkingOffset(List<String> workingDays) {
+    if (workingDays.isEmpty) return 999;
+    final now = DateTime.now();
+    for (int offset = 1; offset <= 7; offset++) {
+      final next = now.add(Duration(days: offset));
+      final name = _getArabicDayName(next.weekday);
+      if (workingDays.contains(name)) return offset;
+    }
+    return 999;
   }
 
   @override
