@@ -27,6 +27,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   List<Map<String, dynamic>> _searchResults = [];
   bool _isSearching = false;
   Timer? _debounceTimer;
+  bool _searchCacheReady = false;
+  List<String> _supportPhones = [];
 
   @override
   void initState() {
@@ -36,6 +38,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     _checkDatabaseConnection();
     _initPresence();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowAdDialog());
+    // Warm up search cache to speed up the first search
+    WidgetsBinding.instance.addPostFrameCallback((_) => _warmupSearchCache());
+    // Load technical support phone numbers from Firestore
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSupportPhones());
   }
 
   Future<void> _initPresence() async {
@@ -65,7 +71,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       
       // تحميل البيانات مسبقاً في Cache للبحث السريع
       print('تحميل البيانات مسبقاً للبحث السريع...');
-      // سيتم تحميل البيانات تلقائياً عند أول بحث
+      // تسخين الكاش مباشرة بعد تنظيفه (بانتظار الاكتمال)
+      await _prefetchSearchData();
+      if (mounted) {
+        setState(() {
+          _searchCacheReady = true;
+        });
+      }
       
       print('تم تحميل البيانات بنجاح - البحث جاهز!');
     } catch (e) {
@@ -94,6 +106,11 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     // تحديث الواجهة لإظهار/إخفاء زر X
     setState(() {});
     
+    // إذا لم يجهز الكاش بعد، لا تنفذ البحث حتى يكتمل التحميل الأولي
+    if (!_searchCacheReady) {
+      return;
+    }
+
     if (query.isEmpty) {
       setState(() {
         _searchResults = [];
@@ -104,6 +121,24 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     
     // البحث الفوري من أول حرف بدون تأخير
     _performSearch(query);
+  }
+
+  Future<void> _warmupSearchCache() async {
+    try {
+      // إجراء بحث خفيف لتسخين الـ Cache حتى يكون أول بحث سريعاً
+      await CentralDataService.searchDoctorsAndSpecialties('ا');
+    } catch (_) {}
+  }
+
+  Future<void> _prefetchSearchData() async {
+    try {
+      // استعلامات خفيفة متعددة لزيادة احتمالية ملء الكاش من مسارات مختلفة
+      await Future.wait([
+        CentralDataService.searchDoctorsAndSpecialties('ا'),
+        CentralDataService.searchDoctorsAndSpecialties('د'),
+        CentralDataService.searchDoctorsAndSpecialties('a'),
+      ]);
+    } catch (_) {}
   }
 
   Future<void> _performSearch(String query) async {
@@ -123,26 +158,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         _isSearching = false;
       });
       
-      if (results.isEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('لم يتم العثور على نتائج لـ "$query"'),
-            duration: const Duration(seconds: 2),
-            action: SnackBarAction(
-              label: 'مسح Cache',
-              onPressed: () {
-                CentralDataService.clearAllCache();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('تم مسح Cache بنجاح'),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      }
+      // إلغاء رسالة "لم يتم العثور على نتائج" مع خيار مسح الكاش
     } catch (e) {
       print('خطأ في البحث: $e');
       setState(() {
@@ -217,10 +233,22 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 ),
                 const SizedBox(height: 12),
                 
-                // Phone Numbers
-                _buildPhoneNumber("0116319563"),
-                const SizedBox(height: 8),
-                _buildPhoneNumber("0963069664"),
+                // Phone Numbers (from Firestore)
+                if (_supportPhones.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      "لا توجد أرقام متاحة حالياً",
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ),
+                  )
+                else
+                  ...[
+                    for (int i = 0; i < _supportPhones.length; i++) ...[
+                      _buildPhoneNumber(_supportPhones[i]),
+                      if (i < _supportPhones.length - 1) const SizedBox(height: 8),
+                    ]
+                  ],
               ],
             ),
             actions: [
@@ -242,6 +270,46 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         );
       },
     );
+  }
+
+  Future<void> _loadSupportPhones() async {
+    try {
+      // أرقام الدعم الفني من Firestore
+      // متوقع: collection('support')/doc('phones') => {'numbers': ['011...', '096...']}
+      final doc = await FirebaseFirestore.instance
+          .collection('support')
+          .doc('phones')
+          .get()
+          .timeout(const Duration(seconds: 5));
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>?;
+        final nums = (data?['numbers'] as List?)?.map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList() ?? [];
+        if (mounted) {
+          setState(() {
+            _supportPhones = nums;
+          });
+        }
+        return;
+      }
+
+      // بديل: support/contacts => {'phones': [...]}
+      final doc2 = await FirebaseFirestore.instance
+          .collection('support')
+          .doc('contacts')
+          .get()
+          .timeout(const Duration(seconds: 5));
+      if (doc2.exists) {
+        final data = doc2.data() as Map<String, dynamic>?;
+        final nums = (data?['phones'] as List?)?.map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList() ?? [];
+        if (mounted) {
+          setState(() {
+            _supportPhones = nums;
+          });
+        }
+      }
+    } catch (e) {
+      // تجاهل الخطأ والاكتفاء بعدم عرض أرقام
+    }
   }
 
   Widget _buildPhoneNumber(String phoneNumber) {
@@ -988,16 +1056,16 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             children: [
               // Profile Icon
               Container(
-                width: 50,
-                height: 50,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF2FBDAF).withOpacity(0.1),
+                  color: Colors.grey[200],
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.person,
                   color: Color(0xFF2FBDAF),
-                  size: 24,
+                  size: 18,
                 ),
               ),
               const SizedBox(width: 16),

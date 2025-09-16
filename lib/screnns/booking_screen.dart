@@ -94,21 +94,21 @@ class _BookingScreenState extends State<BookingScreen> {
     if (_hasScheduleOn(tomorrow) && !blockedDates.contains(tomorrowStr)) {
       final dayName = intl.DateFormat('EEEE', 'ar').format(tomorrow).trim();
       final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
-
+      
       bool hasValidPeriod = false;
-
+      
       final morning = schedule?['morning'] as Map<String, dynamic>?;
       if (morning != null && morning.isNotEmpty) {
         hasValidPeriod = true;
       }
-
+      
       final evening = schedule?['evening'] as Map<String, dynamic>?;
       if (evening != null && evening.isNotEmpty) {
         hasValidPeriod = true;
       }
-
+      
       if (hasValidPeriod) {
-        allowed.add(tomorrowStr);
+      allowed.add(tomorrowStr);
       }
     }
 
@@ -365,21 +365,21 @@ class _BookingScreenState extends State<BookingScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final tomorrow = today.add(const Duration(days: 1));
-
+    
     // يسمح بالحجز للغد فقط
     if (intl.DateFormat('yyyy-MM-dd').format(date) != intl.DateFormat('yyyy-MM-dd').format(tomorrow)) {
       return false;
     }
 
-    final dayName = intl.DateFormat('EEEE', 'ar').format(tomorrow).trim();
-    final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
-    if (schedule == null) return false;
-
-    final morning = schedule['morning'] as Map<String, dynamic>?;
-    final evening = schedule['evening'] as Map<String, dynamic>?;
-    final hasMorning = morning != null && morning.isNotEmpty;
-    final hasEvening = evening != null && evening.isNotEmpty;
-    return hasMorning || hasEvening;
+      final dayName = intl.DateFormat('EEEE', 'ar').format(tomorrow).trim();
+      final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
+      if (schedule == null) return false;
+      
+      final morning = schedule['morning'] as Map<String, dynamic>?;
+      final evening = schedule['evening'] as Map<String, dynamic>?;
+      final hasMorning = morning != null && morning.isNotEmpty;
+      final hasEvening = evening != null && evening.isNotEmpty;
+      return hasMorning || hasEvening;
   }
 
   // دالة جديدة لتحديد الفترة المناسبة بناءً على الوقت الحالي
@@ -396,14 +396,14 @@ class _BookingScreenState extends State<BookingScreen> {
     final hasEvening = evening != null && evening.isNotEmpty;
     
     // نطبق منطق الغد فقط: إن كانت فترة واحدة أعدها، وإن كانت فترتان اترك الاختيار للمستخدم
-    if (hasMorning && !hasEvening) {
-      return 'morning';
+      if (hasMorning && !hasEvening) {
+        return 'morning';
     } else if (!hasMorning && hasEvening) {
-      return 'evening';
+        return 'evening';
     } else if (hasMorning && hasEvening) {
-      return null;
+        return null;
     }
-
+    
     return null;
   }
 
@@ -453,7 +453,7 @@ class _BookingScreenState extends State<BookingScreen> {
       print('workingSchedule فارغ أو غير محدد أو غير موجود في قاعدة البيانات');
       return dates;
     }
-
+    
     // عرض جميع الأيام التي لها جدول عمل خلال 7 أيام بدءاً من الغد، حتى لو لم تكن قابلة للحجز
     // ملاحظة: استخدام i من 1 إلى 7 يضمن ظهور نفس يوم الأسبوع القادم
     for (int i = 1; i <= 7; i++) {
@@ -472,7 +472,7 @@ class _BookingScreenState extends State<BookingScreen> {
         }
       }
     }
-
+    
     return dates;
   }
 

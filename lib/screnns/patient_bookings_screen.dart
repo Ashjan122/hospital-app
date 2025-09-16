@@ -864,8 +864,8 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                 // محاولة الاستدلال من وقت الحجز
                 String bookedTimeStr = (booking['time'] ?? '').toString();
                 if (bookedTimeStr.isNotEmpty && !bookedTimeStr.contains(':') && RegExp(r'^\d{1,2}$').hasMatch(bookedTimeStr)) {
-                  bookedTimeStr = bookedTimeStr.padLeft(2, '0') + ':00';
-                }
+                    bookedTimeStr = bookedTimeStr.padLeft(2, '0') + ':00';
+                  }
                 DateTime? _timeOf(String? hhmm) {
                   if (hhmm == null || !hhmm.contains(':')) return null;
                   final parts = hhmm.split(':');
