@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:hospital_app/services/app_update_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -15,11 +18,14 @@ class _AboutScreenState extends State<AboutScreen> {
   String _firebaseVersion = '';
   String? _updateUrl;
   bool _isLoading = true;
+  List<String> _supportPhones = [];
+  StreamSubscription? _supportPhonesSub;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _listenSupportPhones();
   }
 
   Future<void> _loadData() async {
@@ -46,6 +52,75 @@ class _AboutScreenState extends State<AboutScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _listenSupportPhones() {
+    // live updates from support/phones { numbers: [...] }
+    _supportPhonesSub?.cancel();
+    _supportPhonesSub = FirebaseFirestore.instance
+        .collection('support')
+        .doc('phones')
+        .snapshots()
+        .listen((doc) {
+      final nums = (doc.data()?['numbers'] as List?)
+              ?.map((e) => (e ?? '').toString().trim())
+              .where((s) => s.isNotEmpty)
+              .cast<String>()
+              .toList() ?? [];
+      if (mounted) setState(() { _supportPhones = nums; });
+    }, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    _supportPhonesSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
+    try {
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لا يمكن فتح تطبيق الهاتف')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطأ في الاتصال: $e')),
+      );
+    }
+  }
+
+  void _copyPhoneNumber(String phoneNumber) {
+    Clipboard.setData(ClipboardData(text: phoneNumber));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('تم نسخ الرقم: $phoneNumber')),
+    );
+  }
+
+  Widget _buildPhoneNumber(String phoneNumber) {
+    return GestureDetector(
+      onTap: () => _makePhoneCall(phoneNumber),
+      onLongPress: () => _copyPhoneNumber(phoneNumber),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Text(
+          phoneNumber,
+          style: const TextStyle(
+            color: Color(0xFF2FBDAF),
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            decoration: TextDecoration.underline,
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _handleCheckAndUpdate() async {
@@ -117,12 +192,13 @@ class _AboutScreenState extends State<AboutScreen> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
+          centerTitle: true,
           title: const Text(
             'حول التطبيق',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2FBDAF), fontSize: 30),
           ),
-          backgroundColor: const Color.fromARGB(255, 78, 17, 175),
-          foregroundColor: Colors.white,
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF2FBDAF),
           elevation: 0,
         ),
         body: SafeArea(
@@ -225,17 +301,17 @@ class _AboutScreenState extends State<AboutScreen> {
                               width: double.infinity,
                               child: ElevatedButton.icon(
                                 onPressed: _handleCheckAndUpdate,
-                                icon: const Icon(Icons.system_update),
+                                icon: const Icon(Icons.system_update, color: Colors.white),
                                 label: Text(
                                   hasFirebaseVersion && _firebaseVersion != _currentVersion
                                       ? 'تحديث التطبيق'
                                       : 'فحص الإصدار والتحديث'
                                 ),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: hasFirebaseVersion && _firebaseVersion != _currentVersion
-                                      ? Colors.green
-                                      : const Color.fromARGB(255, 78, 17, 175),
+                                  backgroundColor: const Color(0xFF2FBDAF),
                                   foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 ),
                               ),
                             ),
@@ -254,9 +330,17 @@ class _AboutScreenState extends State<AboutScreen> {
                       const SizedBox(height: 16),
 
                       // Support (expandable)
-                      const ExpandableSection(
+                      ExpandableSection(
                         title: 'الدعم الفني ووسائل التواصل',
-                        child: Text('قريباً', style: TextStyle(color: Colors.blueGrey)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_supportPhones.isEmpty)
+                              Text('لا توجد أرقام متاحة حالياً', style: TextStyle(color: Colors.grey[600]))
+                            else
+                              ...List.generate(_supportPhones.length, (i) => _buildPhoneNumber(_supportPhones[i])),
+                          ],
+                        ),
                       ),
 
                       const SizedBox(height: 16),

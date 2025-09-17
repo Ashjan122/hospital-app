@@ -29,6 +29,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   Timer? _debounceTimer;
   bool _searchCacheReady = false;
   List<String> _supportPhones = [];
+  StreamSubscription? _supportPhonesSub;
 
   @override
   void initState() {
@@ -40,8 +41,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowAdDialog());
     // Warm up search cache to speed up the first search
     WidgetsBinding.instance.addPostFrameCallback((_) => _warmupSearchCache());
-    // Load technical support phone numbers from Firestore
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSupportPhones());
+    // Listen to technical support phone numbers from Firestore (live updates)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _listenSupportPhones());
+    // Also load once immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSupportPhonesOnce());
   }
 
   Future<void> _initPresence() async {
@@ -94,6 +97,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     });
     _searchController.dispose();
     _debounceTimer?.cancel();
+    _supportPhonesSub?.cancel();
     super.dispose();
   }
 
@@ -272,43 +276,53 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
-  Future<void> _loadSupportPhones() async {
+  void _listenSupportPhones() {
+    _supportPhonesSub?.cancel();
+    _supportPhonesSub = FirebaseFirestore.instance
+        .collection('support')
+        .doc('phones')
+        .snapshots()
+        .listen((doc) {
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>?;
+        final numbers = (data?['numbers'] as List?)
+            ?.map((e) => (e ?? '').toString().trim())
+            .where((s) => s.isNotEmpty)
+            .cast<String>()
+            .toList() ?? [];
+        if (mounted) {
+          setState(() {
+            _supportPhones = numbers;
+          });
+        }
+      }
+    }, onError: (e) {
+      print('خطأ في الاستماع لأرقام الدعم: $e');
+    });
+  }
+
+  Future<void> _loadSupportPhonesOnce() async {
     try {
-      // أرقام الدعم الفني من Firestore
-      // متوقع: collection('support')/doc('phones') => {'numbers': ['011...', '096...']}
       final doc = await FirebaseFirestore.instance
           .collection('support')
           .doc('phones')
           .get()
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 3));
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>?;
-        final nums = (data?['numbers'] as List?)?.map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList() ?? [];
+        final numbers = (data?['numbers'] as List?)
+            ?.map((e) => (e ?? '').toString().trim())
+            .where((s) => s.isNotEmpty)
+            .cast<String>()
+            .toList() ?? [];
         if (mounted) {
           setState(() {
-            _supportPhones = nums;
-          });
-        }
-        return;
-      }
-
-      // بديل: support/contacts => {'phones': [...]}
-      final doc2 = await FirebaseFirestore.instance
-          .collection('support')
-          .doc('contacts')
-          .get()
-          .timeout(const Duration(seconds: 5));
-      if (doc2.exists) {
-        final data = doc2.data() as Map<String, dynamic>?;
-        final nums = (data?['phones'] as List?)?.map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList() ?? [];
-        if (mounted) {
-          setState(() {
-            _supportPhones = nums;
+            _supportPhones = numbers;
           });
         }
       }
     } catch (e) {
-      // تجاهل الخطأ والاكتفاء بعدم عرض أرقام
+      print('خطأ في تحميل أرقام الدعم: $e');
     }
   }
 
