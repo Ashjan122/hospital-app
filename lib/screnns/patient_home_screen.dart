@@ -8,7 +8,7 @@ import 'package:hospital_app/screnns/patient_bookings_screen.dart';
 import 'package:hospital_app/screnns/booking_screen.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
 import 'package:hospital_app/screnns/about_screen.dart';
-import 'package:hospital_app/screnns/home_samples_request_screen.dart';
+import 'package:hospital_app/screnns/home_clinic_screen.dart';
 import 'package:hospital_app/services/central_data_service.dart';
 import 'package:hospital_app/services/presence_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -475,12 +475,28 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
       print('[AD] Checking for ad... lastShownAdId=$lastShownAdId');
 
-      // Primary: ads with show == true
-      QuerySnapshot snapshot = await FirebaseFirestore.instance
+      // First check for update ads (priority)
+      QuerySnapshot updateSnapshot = await FirebaseFirestore.instance
           .collection('ads')
           .where('show', isEqualTo: true)
+          .where('tybe', isEqualTo: 'update')
           .limit(1)
           .get();
+
+      QuerySnapshot snapshot;
+      if (updateSnapshot.docs.isNotEmpty) {
+        // If update ad exists, use it (priority)
+        print('[AD] Found update ad, showing it with priority');
+        snapshot = updateSnapshot;
+      } else {
+        // Otherwise, get any ad with show == true
+        print('[AD] No update ad found, checking for other ads');
+        snapshot = await FirebaseFirestore.instance
+            .collection('ads')
+            .where('show', isEqualTo: true)
+            .limit(1)
+            .get();
+      }
 
       if (snapshot.docs.isEmpty) {
         print('[AD] No ads found.');
@@ -492,27 +508,30 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       // Use business id field if available, otherwise doc id
       final adId = (data['id']?.toString().isNotEmpty ?? false) ? data['id'].toString() : doc.id;
       print('[AD] Found ad id=$adId');
+      
+      final tybe = (data['tybe'] ?? '').toString();
+      
+      // Check if ad was already shown (for all ad types including update)
       if (adId == lastShownAdId) {
-        print('[AD] Already shown, skipping.');
+        print('[AD] Already shown, skipping. adId=$adId, lastShownAdId=$lastShownAdId');
         return;
       }
 
-      final tybe = (data['tybe'] ?? '').toString();
       final title = (data['title'] ?? '').toString();
       final message = (data['message'] ?? '').toString();
       final doctorName = (data['doctorNam'] ?? '').toString();
       final doctorPhotoUrl = (data['doctorPhotoUrl'] ?? '').toString();
       final centerLogoUrl = (data['centerLogoUrl'] ?? '').toString();
-      final durationStr = (data['duration'] ?? '6').toString();
-      final durationSec = int.tryParse(durationStr) ?? 6;
       final adFacilityId = (data['facilityId'] ?? '').toString();
       final adSpecializationId = (data['specializationId'] ?? '').toString();
       final adCentralDoctorId = (data['centralDoctorId'] ?? '').toString();
+      final bottonLabel = (data['bottonLabel'] ?? '').toString();
+      final bottonUrl = (data['bottonUrl'] ?? '').toString();
 
       if (!mounted) return;
       final dialogFuture = showDialog(
         context: context,
-        barrierDismissible: false,
+        barrierDismissible: tybe != 'update', // Update ads cannot be dismissed
         builder: (ctx) {
           bool isLoading = false;
           return Directionality(
@@ -532,11 +551,15 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              IconButton(
-                                onPressed: () => Navigator.of(ctx).pop(),
-                                icon: const Icon(Icons.close, color: Colors.black54),
-                                splashRadius: 18,
-                              ),
+                              // Only show close button for non-update ads
+                              if (tybe != 'update')
+                                IconButton(
+                                  onPressed: () => Navigator.of(ctx).pop(),
+                                  icon: const Icon(Icons.close, color: Colors.black54),
+                                  splashRadius: 18,
+                                )
+                              else
+                                const SizedBox(width: 48), // Placeholder for spacing
                               if (centerLogoUrl.isNotEmpty)
                                 CircleAvatar(
                                   radius: 20,
@@ -595,20 +618,117 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                           const SizedBox(height: 16),
 
                           if (message.isNotEmpty)
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFB71C1C),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                message,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18),
+                            Text(
+                              message,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 18,
                               ),
                             ),
                           const SizedBox(height: 16),
+                          
+                          // Update button for update ads
+                          if (tybe == 'update' && bottonLabel.isNotEmpty && bottonUrl.isNotEmpty)
+                            ElevatedButton(
+                              onPressed: isLoading
+                                  ? null
+                                  : () async {
+                                      if (!mounted) return;
+                                      setState(() => isLoading = true);
+                                      try {
+                                        final Uri url = Uri.parse(bottonUrl);
+                                        print('[UPDATE] Attempting to open URL: $bottonUrl');
+                                        
+                                        // Try different launch modes
+                                        bool launched = false;
+                                        
+                                        // First try: external application (browser)
+                                        if (await canLaunchUrl(url)) {
+                                          try {
+                                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                                            launched = true;
+                                            print('[UPDATE] Successfully opened in external app');
+                                          } catch (e) {
+                                            print('[UPDATE] Failed to open in external app: $e');
+                                          }
+                                        }
+                                        
+                                        // Second try: platform default
+                                        if (!launched) {
+                                          try {
+                                            await launchUrl(url, mode: LaunchMode.platformDefault);
+                                            launched = true;
+                                            print('[UPDATE] Successfully opened with platform default');
+                                          } catch (e) {
+                                            print('[UPDATE] Failed to open with platform default: $e');
+                                          }
+                                        }
+                                        
+                                        // Third try: in-app web view
+                                        if (!launched) {
+                                          try {
+                                            await launchUrl(url, mode: LaunchMode.inAppWebView);
+                                            launched = true;
+                                            print('[UPDATE] Successfully opened in web view');
+                                          } catch (e) {
+                                            print('[UPDATE] Failed to open in web view: $e');
+                                          }
+                                        }
+                                        
+                                        if (launched) {
+                                          // Mark update ad as shown after successful launch
+                                          await prefs.setString('lastShownAdId', adId);
+                                          Navigator.of(ctx).pop();
+                                        } else {
+                                          // Copy URL to clipboard as fallback
+                                          await Clipboard.setData(ClipboardData(text: bottonUrl));
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('لا يمكن فتح الرابط. تم نسخ الرابط: $bottonUrl'),
+                                              backgroundColor: Colors.orange,
+                                              duration: const Duration(seconds: 5),
+                                              action: SnackBarAction(
+                                                label: 'نسخ مرة أخرى',
+                                                textColor: Colors.white,
+                                                onPressed: () async {
+                                                  await Clipboard.setData(ClipboardData(text: bottonUrl));
+                                                },
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        print('[UPDATE] Error opening URL: $e');
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('خطأ في فتح رابط التحديث: $e'),
+                                            backgroundColor: Colors.red,
+                                            duration: const Duration(seconds: 5),
+                                          ),
+                                        );
+                                      } finally {
+                                        if (context.mounted) setState(() => isLoading = false);
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2FBDAF),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                              ),
+                              child: isLoading
+                                  ? const SizedBox(
+                                      height: 22,
+                                      width: 22,
+                                      child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                                    )
+                                  : Text(bottonLabel),
+                            ),
+                          
+                          // Doctor booking button for doctor ads
                           if (tybe == 'doctor' && doctorName.isNotEmpty)
                             ElevatedButton(
                               onPressed: isLoading
@@ -634,20 +754,20 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                                           orElse: () => null,
                                         );
 
-                                        if (match != null && match!.isNotEmpty) {
-                                          final schedule = match!['workingSchedule'] as Map<String, dynamic>? ?? {};
+                                        if (match != null && match.isNotEmpty) {
+                                          final schedule = match['workingSchedule'] as Map<String, dynamic>? ?? {};
                                           if (schedule.isNotEmpty) {
-                                            final facilityId = (match!['facilityId'] ?? '').toString();
-                                            final specializationId = (match!['specializationId'] ?? '').toString();
-                                            final doctorId = (match!['id'] ?? '').toString();
-                                            final centerName = (match!['centerName'] ?? '').toString();
-                                            final specName = (match!['specialization'] ?? '').toString();
+                                            final facilityId = (match['facilityId'] ?? '').toString();
+                                            final specializationId = (match['specializationId'] ?? '').toString();
+                                            final doctorId = (match['id'] ?? '').toString();
+                                            final centerName = (match['centerName'] ?? '').toString();
+                                            final specName = (match['specialization'] ?? '').toString();
                                             if (!context.mounted) return;
                                             Navigator.of(ctx).pop();
                                             Navigator.of(context).push(
                                               MaterialPageRoute(
                                                 builder: (_) => BookingScreen(
-                                                  name: (match!['name'] ?? doctorName).toString(),
+                                                  name: (match?['name'] ?? doctorName).toString(),
                                                   workingSchedule: schedule,
                                                   facilityId: facilityId,
                                                   specializationId: specializationId,
@@ -680,8 +800,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                                       }
                                     },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.grey[300],
-                                foregroundColor: const Color(0xFFB71C1C),
+                                backgroundColor: const Color(0xFFB71C1C),
+                                foregroundColor: Colors.black,
                                 padding: const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
@@ -690,7 +810,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                                   ? const SizedBox(
                                       height: 22,
                                       width: 22,
-                                      child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFB71C1C))),
+                                      child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.black)),
                                     )
                                   : const Text('احجز الآن'),
                             ),
@@ -708,9 +828,11 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
       await dialogFuture;
 
-      // Mark as shown
-      await prefs.setString('lastShownAdId', adId);
-      print('[AD] Marked ad as shown: $adId');
+      // Mark as shown (only for non-update ads, update ads are marked when button is pressed)
+      if (tybe != 'update') {
+        await prefs.setString('lastShownAdId', adId);
+        print('[AD] Marked ad as shown: $adId');
+      }
     } catch (e) {
       print('[AD] Error showing ad: $e');
     }
@@ -910,17 +1032,17 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Home Examinations Card
+          // Home Clinic Card
           _buildCard(
-            title: "الفحوصات المنزلية",
-            subtitle: "طلب فحوصات من المنزل",
-            icon: Icons.biotech,
+            title: "العيادة المنزلية",
+            subtitle: "خدمات طبية منزلية",
+            icon: Icons.local_hospital,
             color: Colors.orange,
             onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const HomeSamplesRequestScreen(),
+                  builder: (context) => const HomeClinicScreen(),
                 ),
               );
             },
@@ -1261,18 +1383,18 @@ class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
           (r) => (r?['type'] == 'doctor') && _normalizeName(r?['name'] ?? '').contains(target),
           orElse: () => null,
         );
-        if (match != null && match!.isNotEmpty) {
+        if (match != null && match.isNotEmpty) {
           final schedule = match['workingSchedule'] as Map<String, dynamic>? ?? {};
           if (schedule.isNotEmpty && mounted) {
-            final facilityId = (match!['facilityId'] ?? '').toString();
-            final specializationId = (match!['specializationId'] ?? '').toString();
-            final doctorId = (match!['id'] ?? '').toString();
-            final centerName = (match!['centerName'] ?? '').toString();
-            final specName = (match!['specialization'] ?? '').toString();
+            final facilityId = (match['facilityId'] ?? '').toString();
+            final specializationId = (match['specializationId'] ?? '').toString();
+            final doctorId = (match['id'] ?? '').toString();
+            final centerName = (match['centerName'] ?? '').toString();
+            final specName = (match['specialization'] ?? '').toString();
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
                 builder: (_) => BookingScreen(
-                  name: (match!['name'] ?? base).toString(),
+                  name: (match?['name'] ?? base).toString(),
                   workingSchedule: schedule,
                   facilityId: facilityId,
                   specializationId: specializationId,
