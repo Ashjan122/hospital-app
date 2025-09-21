@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hospital_app/services/sms_service.dart';
 import 'package:hospital_app/services/whatsapp_service.dart';
 import 'package:hospital_app/models/country.dart';
 import 'package:hospital_app/screnns/otp_verification_screen.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -19,6 +21,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _phoneController = TextEditingController();
   
   bool _isLoading = false;
+  List<String> _supportPhones = [];
   
   // Country and verification method selection
   Country _selectedCountry = Country.countries.first; // Default to Sudan
@@ -48,10 +51,40 @@ class _RegisterScreenState extends State<RegisterScreen> {
   };
 
   @override
+  void initState() {
+    super.initState();
+    _loadSupportPhonesOnce();
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSupportPhonesOnce() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('support')
+          .doc('phones')
+          .get()
+          .timeout(const Duration(seconds: 3));
+      if (doc.exists) {
+        final data = doc.data();
+        final numbers = (data?['numbers'] as List?)
+            ?.map((e) => (e ?? '').toString().trim())
+            .where((s) => s.isNotEmpty)
+            .toList() ?? [];
+        if (mounted) {
+          setState(() {
+            _supportPhones = numbers;
+          });
+        }
+      }
+    } catch (e) {
+      print('خطأ في تحميل أرقام الدعم: $e');
+    }
   }
 
   void _showCountryPicker() async {
@@ -209,6 +242,134 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  void _showTermsAndConditions() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const TermsAndConditionsScreen(),
+      ),
+    );
+  }
+
+  void _showTechnicalSupportDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            contentPadding: const EdgeInsets.all(20),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title
+                Text(
+                  "الدعم الفني",
+                  style: TextStyle(
+                    color: const Color(0xFF2FBDAF),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // Description
+                Text(
+                  "يرجى الاتصال على الأرقام التالية:",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // Phone Numbers (from Firestore)
+                if (_supportPhones.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      "لا توجد أرقام متاحة حالياً",
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ),
+                  )
+                else
+                  ...List.generate(_supportPhones.length, (i) => 
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: GestureDetector(
+                        onTap: () => _makePhoneCall(_supportPhones[i]),
+                        onLongPress: () => _copyPhoneNumber(_supportPhones[i]),
+                        child: Text(
+                          _supportPhones[i],
+                          style: TextStyle(
+                            color: const Color(0xFF2FBDAF),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'إغلاق',
+                  style: TextStyle(
+                    color: const Color(0xFF2FBDAF),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
+    try {
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('لا يمكن فتح تطبيق الهاتف'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ في الاتصال: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _copyPhoneNumber(String phoneNumber) {
+    Clipboard.setData(ClipboardData(text: phoneNumber));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('تم نسخ الرقم: $phoneNumber'),
+        backgroundColor: const Color(0xFF2FBDAF),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -224,6 +385,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         backgroundColor: const Color(0xFF2FBDAF),
         foregroundColor: Colors.white,
         elevation: 0,
+        centerTitle: true,
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -509,6 +671,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         const SizedBox(height: 20),
 
+                        // Terms and Conditions
+                        GestureDetector(
+                          onTap: _showTermsAndConditions,
+                          child: RichText(
+                            textAlign: TextAlign.center,
+                            text: TextSpan(
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey,
+                              ),
+                              children: [
+                                const TextSpan(text: 'إنشاء الحساب يعني موافقتك على '),
+                                TextSpan(
+                                  text: 'الشروط والأحكام',
+                                  style: TextStyle(
+                                    color: const Color(0xFF2FBDAF),
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: const Color(0xFF2FBDAF),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
                         // Register button
                         SizedBox(
                           width: double.infinity,
@@ -573,6 +761,48 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               ),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Technical Support Footer
+                        GestureDetector(
+                          onTap: _showTechnicalSupportDialog,
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.support_agent,
+                                      color: Colors.grey[600],
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Column(
+                                      children: [
+                                        Text(
+                                          "الدعم الفني",
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.grey[600],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Container(
+                                          width: 60,
+                                          height: 1,
+                                          color: Colors.grey[400],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -705,6 +935,345 @@ class _CountryPickerModalState extends State<_CountryPickerModal> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class TermsAndConditionsScreen extends StatefulWidget {
+  const TermsAndConditionsScreen({super.key});
+
+  @override
+  State<TermsAndConditionsScreen> createState() => _TermsAndConditionsScreenState();
+}
+
+class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen> {
+  List<String> _supportPhones = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSupportPhonesOnce();
+  }
+
+  Future<void> _loadSupportPhonesOnce() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('support')
+          .doc('phones')
+          .get()
+          .timeout(const Duration(seconds: 3));
+      if (doc.exists) {
+        final data = doc.data();
+        final numbers = (data?['numbers'] as List?)
+            ?.map((e) => (e ?? '').toString().trim())
+            .where((s) => s.isNotEmpty)
+            .toList() ?? [];
+        if (mounted) {
+          setState(() {
+            _supportPhones = numbers;
+          });
+        }
+      }
+    } catch (e) {
+      print('خطأ في تحميل أرقام الدعم: $e');
+    }
+  }
+
+  void _showTechnicalSupportDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            contentPadding: const EdgeInsets.all(20),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title
+                Text(
+                  "الدعم الفني",
+                  style: TextStyle(
+                    color: const Color(0xFF2FBDAF),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // Description
+                Text(
+                  "يرجى الاتصال على الأرقام التالية:",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // Phone Numbers (from Firestore)
+                if (_supportPhones.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      "لا توجد أرقام متاحة حالياً",
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ),
+                  )
+                else
+                  ...List.generate(_supportPhones.length, (i) => 
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: GestureDetector(
+                        onTap: () => _makePhoneCall(_supportPhones[i]),
+                        onLongPress: () => _copyPhoneNumber(_supportPhones[i]),
+                        child: Text(
+                          _supportPhones[i],
+                          style: TextStyle(
+                            color: const Color(0xFF2FBDAF),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'إغلاق',
+                  style: TextStyle(
+                    color: const Color(0xFF2FBDAF),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
+    try {
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('لا يمكن فتح تطبيق الهاتف'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ في الاتصال: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _copyPhoneNumber(String phoneNumber) {
+    Clipboard.setData(ClipboardData(text: phoneNumber));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('تم نسخ الرقم: $phoneNumber'),
+        backgroundColor: const Color(0xFF2FBDAF),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'الشروط والأحكام',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              fontSize: 20,
+            ),
+          ),
+          backgroundColor: const Color(0xFF2FBDAF),
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFF2FBDAF).withOpacity(0.1),
+                Colors.grey[50]!,
+              ],
+            ),
+          ),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Card(
+                elevation: 8,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Header
+                      Center(
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 80,
+                              height: 80,
+                              child: Image.asset(
+                                'assets/images/logo.png',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'الشروط والأحكام',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF2FBDAF),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'شروط وأحكام استخدام التطبيق',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // Terms Content
+                      _buildTermsSection(
+                        '1. كيفية الاستخدام',
+                        'التطبيق مخصص لحجز المواعيد الطبية والاستفادة من الخدمات الطبية. يجب استخدام التطبيق للأغراض الطبية المشروعة فقط. المستخدم مسؤول عن صحة المعلومات المقدمة في التطبيق',
+                      ),
+                      const SizedBox(height: 24),
+                      _buildTermsSection(
+                        '2. التزامات التطبيق',
+                        'نلتزم بتوفير خدمات حجز المواعيد الطبية بكفاءة عالية وضمان سرية وأمان البيانات الشخصية للمستخدمين. نوفر دعم فني متواصل للمستخدمين ونقوم بتحديث التطبيق بانتظام لتحسين الخدمات. نضمن توفر الخدمات على مدار الساعة وتوفير معلومات دقيقة ومحدثة عن المراكز الطبية.',
+                      ),
+                      const SizedBox(height: 24),
+                      _buildTermsSection(
+                        '3. المساعدة والدعم',
+                        'فريق الدعم الفني متاح لمساعدتك في أي وقت ويمكن التواصل معنا عبر الأرقام المرفقة في التطبيق. نلتزم بالرد على استفساراتك في أقرب وقت ممكن ونوفر دليل استخدام شامل للتطبيق. نقدم المساعدة في حل المشاكل التقنية ونستقبل اقتراحاتكم لتحسين الخدمة.',
+                      ),
+                      const SizedBox(height: 24),
+                      _buildTermsSection(
+                        '4. الخصوصية وسرية المعلومات',
+                        'نحن نلتزم بحماية خصوصيتك وسرية معلوماتك الشخصية ولا نشارك معلوماتك مع أطراف ثالثة دون موافقتك. نحتفظ ببياناتك فقط للمدة اللازمة لتقديم الخدمة ونلتزم بجميع القوانين المحلية والدولية لحماية البيانات.',
+                      ),
+                      const SizedBox(height: 24),
+                      _buildTermsSection(
+                        '5. إخلاء المسؤولية',
+                        'التطبيق يقدم خدمات حجز المواعيد فقط ولا نتحمل مسؤولية جودة الخدمات الطبية المقدمة. المستخدم مسؤول عن التأكد من صحة المعلومات الطبية وننصح بالاستشارة الطبية المباشرة في الحالات الطارئة.',
+                      ),
+                      const SizedBox(height: 32),
+
+                      // Technical Support Footer
+                      GestureDetector(
+                        onTap: () => _showTechnicalSupportDialog(context),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.support_agent,
+                                    color: Colors.grey[600],
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Column(
+                                    children: [
+                                      Text(
+                                        "الدعم الفني",
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.grey[600],
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Container(
+                                        width: 60,
+                                        height: 1,
+                                        color: Colors.grey[400],
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTermsSection(String title, String content) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2FBDAF),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          content,
+          style: const TextStyle(
+            fontSize: 15,
+            color: Colors.black87,
+            height: 1.6,
+          ),
+        ),
+      ],
     );
   }
 }

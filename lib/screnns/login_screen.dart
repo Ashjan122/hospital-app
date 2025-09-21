@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hospital_app/screnns/patient_home_screen.dart';
 import 'package:hospital_app/screnns/register_screen.dart';
 import 'package:hospital_app/services/sms_service.dart';
@@ -7,7 +8,7 @@ import 'package:hospital_app/screnns/otp_verification_screen.dart';
 import 'package:hospital_app/models/country.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:hospital_app/models/country.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,11 +23,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String _verificationMethod = 'sms';
   Country _selectedCountry = Country.countries.first;
+  List<String> _supportPhones = [];
 
   @override
   void initState() {
     super.initState();
     _checkLoginStatus();
+    _loadSupportPhonesOnce();
   }
 
   @override
@@ -51,35 +54,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _saveLoginData(String userType, {String? userEmail, String? userName, String? userId}) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isLoggedIn', true);
-    await prefs.setString('userType', userType);
-    
-    if (userEmail != null) await prefs.setString('userEmail', userEmail);
-    if (userName != null) await prefs.setString('userName', userName);
-    if (userId != null) await prefs.setString('userId', userId);
-  }
-
-  Future<void> _saveFCMTokenForPatient(String patientId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final fcmToken = prefs.getString('fcm_token');
-      
-      if (fcmToken != null) {
-        await FirebaseFirestore.instance
-            .collection('patients')
-            .doc(patientId)
-            .update({
-          'fcmToken': fcmToken,
-          'lastTokenUpdate': FieldValue.serverTimestamp(),
-        });
-        print('تم حفظ FCM token للمريض: $patientId');
-      }
-    } catch (e) {
-      print('خطأ في حفظ FCM token: $e');
-    }
-  }
 
 
   Future<void> _login() async {
@@ -233,6 +207,149 @@ class _LoginScreenState extends State<LoginScreen> {
   void _registerWithUsername() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const RegisterScreen()),
+    );
+  }
+
+  Future<void> _loadSupportPhonesOnce() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('support')
+          .doc('phones')
+          .get()
+          .timeout(const Duration(seconds: 3));
+      if (doc.exists) {
+        final data = doc.data();
+        final numbers = (data?['numbers'] as List?)
+            ?.map((e) => (e ?? '').toString().trim())
+            .where((s) => s.isNotEmpty)
+            .toList() ?? [];
+        if (mounted) {
+          setState(() {
+            _supportPhones = numbers;
+          });
+        }
+      }
+    } catch (e) {
+      print('خطأ في تحميل أرقام الدعم: $e');
+    }
+  }
+
+  void _showTechnicalSupportDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            contentPadding: const EdgeInsets.all(20),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Title
+                Text(
+                  "الدعم الفني",
+                  style: TextStyle(
+                    color: const Color(0xFF2FBDAF),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // Description
+                Text(
+                  "يرجى الاتصال على الأرقام التالية:",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                // Phone Numbers (from Firestore)
+                if (_supportPhones.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      "لا توجد أرقام متاحة حالياً",
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ),
+                  )
+                else
+                  ...List.generate(_supportPhones.length, (i) => 
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: GestureDetector(
+                        onTap: () => _makePhoneCall(_supportPhones[i]),
+                        onLongPress: () => _copyPhoneNumber(_supportPhones[i]),
+                        child: Text(
+                          _supportPhones[i],
+                          style: TextStyle(
+                            color: const Color(0xFF2FBDAF),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'إغلاق',
+                  style: TextStyle(
+                    color: const Color(0xFF2FBDAF),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
+    try {
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('لا يمكن فتح تطبيق الهاتف'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('خطأ في الاتصال: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _copyPhoneNumber(String phoneNumber) {
+    Clipboard.setData(ClipboardData(text: phoneNumber));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('تم نسخ الرقم: $phoneNumber'),
+        backgroundColor: const Color(0xFF2FBDAF),
+        duration: const Duration(seconds: 2),
+      ),
     );
   }
 
@@ -452,6 +569,48 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Technical Support Footer
+                        GestureDetector(
+                          onTap: _showTechnicalSupportDialog,
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.support_agent,
+                                      color: Colors.grey[600],
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Column(
+                                      children: [
+                                        Text(
+                                          "الدعم الفني",
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.grey[600],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Container(
+                                          width: 60,
+                                          height: 1,
+                                          color: Colors.grey[400],
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
 
                       ],
