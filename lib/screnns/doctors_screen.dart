@@ -390,6 +390,14 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                   final bool hasValidPhoto = photoUrl.startsWith('http');
                   const String fallbackUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
                   final String effectiveUrl = hasValidPhoto ? photoUrl : fallbackUrl;
+                  // حالة العمل غداً وإتاحة الحجز
+                  final List<String> workingDays = _getWorkingDaysList(doctorData['workingSchedule'] ?? {});
+                  final String tomorrow = _getArabicDayName(DateTime.now().weekday == 7 ? 1 : DateTime.now().weekday + 1);
+                  final bool worksTomorrow = workingDays.contains(tomorrow);
+                  final bool isBookingEnabled = (doctorData['isBookingEnabled'] != false);
+                  final Color statusColor = !isBookingEnabled
+                      ? Colors.red
+                      : (worksTomorrow ? Colors.green : Colors.red);
                   
 
                   
@@ -424,21 +432,49 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                         padding: const EdgeInsets.all(20.0),
                         child: Row(
                           children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(50),
-                              child: Image.network(
-                                effectiveUrl,
-                                width: 60,
-                                height: 60,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stack) {
-                                  return Container(
-                                    width: 60,
-                                    height: 60,
-                                    color: Colors.grey[300],
-                                    child: const Icon(Icons.person, color: Colors.grey),
-                                  );
-                                },
+                            SizedBox(
+                              width: 60,
+                              height: 60,
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(50),
+                                      child: Image.network(
+                                        effectiveUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stack) {
+                                          return Container(
+                                            color: Colors.grey[300],
+                                            child: const Icon(Icons.person, color: Colors.grey),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    left: 2,
+                                    top: 2,
+                                    child: Container(
+                                      width: 12,
+                                      height: 12,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Center(
+                                        child: Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            color: statusColor,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             SizedBox(width: 16),

@@ -661,6 +661,81 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
+  Widget _buildContinueButton(List<DateTime> availableDates) {
+    if (availableDates.isNotEmpty && selectedDate != null && !_isDoctorBookingDisabled()) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        child: SizedBox(
+          width: double.infinity,
+          height: 60,
+          child: OutlinedButton(
+            onPressed: () {
+              if (selectedDate == null) {
+                _showDialog("تنبيه","يرجى اختيار يوم أولاً",);
+                return;
+              }
+              
+              // التحقق من الفترات المتاحة
+              if (selectedShift == null) {
+                final appropriateShift = _getAppropriateShift(selectedDate!);
+                if (appropriateShift != null) {
+                  selectedShift = appropriateShift;
+                } else {
+                  _showDialog("تنبيه", "لا توجد فترة متاحة للحجز في هذا اليوم");
+                  return;
+                }
+              }
+              
+              if (!isDateBookable(selectedDate!)) {
+                _showDialog("تنبيه","هذا اليوم غير متاح للحجز، يرجى اختيار يوم آخر",);
+                return;
+              }
+              if (_isFull) {
+                _showDialog("تنبيه","العدد اكتمل لهذا اليوم/الفترة، لا يمكن الحجز",);
+                return;
+              }
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PatientInfoScreen(
+                    facilityId: widget.facilityId,
+                    specializationId: widget.specializationId,
+                    doctorId: widget.doctorId,
+                    selectedDate: selectedDate!,
+                    selectedShift: selectedShift,
+                    workingSchedule: widget.workingSchedule,
+                    isReschedule: widget.isReschedule,
+                    oldBookingData: widget.oldBookingData,
+                  ),
+                ),
+              );
+            },
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(
+                color: const Color(0xFF2FBDAF),
+                width: 2,
+              ),
+              foregroundColor: const Color(0xFF2FBDAF),
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text(
+              "متابعة لإدخال البيانات",
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!localeInitialized) {
@@ -740,17 +815,31 @@ class _BookingScreenState extends State<BookingScreen> {
               onTap: _shareAvailableDaysOnWhatsApp,
               child: Container(
                 padding: EdgeInsets.all(8),
-                child: Image.asset(
-                  'assets/images/whattsap.png',
-                  width: 24,
-                  height: 24,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Icon(
-                      Icons.message,
-                      color: Color(0xFF2FBDAF),
-                      size: 24,
-                    );
-                  },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset(
+                      'assets/images/whattsap.png',
+                      width: 24,
+                      height: 24,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Icon(
+                          Icons.message,
+                          color: Color(0xFF2FBDAF),
+                          size: 24,
+                        );
+                      },
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'مشاركة الجدول',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF2FBDAF),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -758,8 +847,8 @@ class _BookingScreenState extends State<BookingScreen> {
         ),
         body: SafeArea(
           child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
+            padding: const EdgeInsets.all(20),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
                 Text("اختر يوم من الأيام المتاحة:", style: TextStyle(fontSize: 18)),
@@ -848,89 +937,87 @@ class _BookingScreenState extends State<BookingScreen> {
                             ),
                             SizedBox(width: 10),
                                         Expanded(child: Text(formatted, style: TextStyle(fontSize: 16))),
-                                        if (isSelected && isBookable && !_loadingQueue)
-                                          Builder(builder: (_) {
-                                            if (_isFull) {
-                                              return Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.red[200]!),),
-                                                child: const Text('مكتمل', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600, fontSize: 12),),
-                                              );
-                                            }
-                                            if (_queuePosition != null) {
-                                              final capText = _dailyCapacity != null ? _toEnglishDigits(_dailyCapacity!.toString()) : '';
-                                              final text = capText.isNotEmpty ? '${_toEnglishDigits(_queuePosition!.toString())} من $capText' : _toEnglishDigits(_queuePosition!.toString());
-                                              
-                                              // تحديد الفترة والأيقونة
-                                              String periodText = "";
-                                              IconData periodIcon = Icons.access_time;
-                                              Color iconColor = Colors.blue[600]!;
-                                              
-                                              if (selectedShift != null) {
-                                                if (selectedShift == 'morning') {
-                                                  periodText = "صباح";
-                                                  periodIcon = Icons.wb_sunny;
-                                                  iconColor = Colors.orange; // أصفر للشمس
-                                                } else if (selectedShift == 'evening') {
-                                                  periodText = "مساء";
-                                                  periodIcon = Icons.nightlight_round;
-                                                  iconColor = Colors.blue[600]!;
-                                                }
-                                              } else {
-                                                // إذا لم يتم تحديد الفترة، نحددها بناءً على الجدول
-                                                final dayName = intl.DateFormat('EEEE', 'ar').format(date).trim();
-                                                final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
-                                                
-                                                if (schedule != null) {
-                                                  final morning = schedule['morning'] as Map<String, dynamic>?;
-                                                  final evening = schedule['evening'] as Map<String, dynamic>?;
-                                                  
-                                                  final hasMorning = morning != null && morning.isNotEmpty;
-                                                  final hasEvening = evening != null && evening.isNotEmpty;
-                                                  
-                                                  if (hasMorning && !hasEvening) {
-                                                    periodText = "صباح";
-                                                    periodIcon = Icons.wb_sunny;
-                                                    iconColor = Colors.orange; // أصفر للشمس
-                                                  } else if (!hasMorning && hasEvening) {
-                                                    periodText = "مساء";
-                                                    periodIcon = Icons.nightlight_round;
-                                                    iconColor = Colors.blue[600]!;
-                                                  }
-                                                }
-                                              }
-                                              
-                                              return Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue[200]!),),
-                                                child: Column(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    if (periodText.isNotEmpty)
-                                                      Row(
+                                        // شارات صباح/مساء دائماً، وتحتها العدد عند التحديد
+                                        Builder(builder: (_) {
+                                          final dName = intl.DateFormat('EEEE', 'ar').format(date).trim();
+                                          final sch = widget.workingSchedule[dName] as Map<String, dynamic>?;
+                                          final morning = sch?['morning'] as Map<String, dynamic>?;
+                                          final evening = sch?['evening'] as Map<String, dynamic>?;
+                                          final hasMorning = morning != null && morning.isNotEmpty;
+                                          final hasEvening = evening != null && evening.isNotEmpty;
+                                          return Column(
+                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                            children: [
+                                              Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (hasMorning)
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.blue[50],
+                                                        borderRadius: BorderRadius.circular(10),
+                                                        border: Border.all(color: Colors.blue[200]!),
+                                                      ),
+                                                      child: Row(
                                                         mainAxisSize: MainAxisSize.min,
                                                         children: [
-                                                          Icon(periodIcon, size: 12, color: iconColor),
-                                                          SizedBox(width: 2),
-                                                          Text(
-                                                            periodText,
-                                                            style: TextStyle(
-                                                              color: Colors.blue[600],
-                                                              fontWeight: FontWeight.w600,
-                                                              fontSize: 11,
-                                                            ),
-                                                          ),
+                                                          const Icon(Icons.wb_sunny, size: 12, color: Colors.orange),
+                                                          const SizedBox(width: 3),
+                                                          Text('صباح', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blue[600])),
                                                         ],
                                                       ),
-                                                    if (periodText.isNotEmpty)
-                                                      SizedBox(height: 1),
-                                                    Text(text, style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600, fontSize: 10),),
-                                                  ],
-                                                ),
-                                              );
-                                            }
-                                            return const SizedBox.shrink();
-                                          }),
+                                                    ),
+                                                  if (hasMorning && hasEvening) const SizedBox(width: 6),
+                                                  if (hasEvening)
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.blue[50],
+                                                        borderRadius: BorderRadius.circular(10),
+                                                        border: Border.all(color: Colors.blue[200]!),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(Icons.nightlight_round, size: 12, color: Colors.blue[600]),
+                                                          const SizedBox(width: 3),
+                                                          Text('مساء', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blue[600])),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                              if (isSelected && isBookable && !_loadingQueue) const SizedBox(height: 4),
+                                              if (isSelected && isBookable && !_loadingQueue)
+                                                Builder(builder: (_) {
+                                                  if (_isFull) {
+                                                    return Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                      decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.red[200]!),),
+                                                      child: const Text('مكتمل', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600, fontSize: 12),),
+                                                    );
+                                                  }
+                                                  if (_queuePosition != null) {
+                                                    final capText = _dailyCapacity != null ? _toEnglishDigits(_dailyCapacity!.toString()) : '';
+                                                    final text = capText.isNotEmpty ? '${_toEnglishDigits(_queuePosition!.toString())} من $capText' : _toEnglishDigits(_queuePosition!.toString());
+                                                    return Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                      decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.blue[200]!),),
+                                                      child: Column(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          // إظهار العدد فقط تحت الشارات عند التحديد
+                                                          Text(text, style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w600, fontSize: 10),),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  }
+                                                  return const SizedBox.shrink();
+                                                }),
+                                            ],
+                                          );
+                                        }),
                           ],
                         ),
                       ),
@@ -1028,14 +1115,14 @@ class _BookingScreenState extends State<BookingScreen> {
                 if (availableDates.isNotEmpty && isDisabled) {
                   return Column(
                     children: [
-                      SizedBox(height: 20),
+                      SizedBox(height: 100),
                       Center(
                         child: Text(
-                          "خدمة الحجز غير متاحة لهذا الطبيب حالياً",
+                          "للاستعلام فقط",
                           style: TextStyle(
                             color: Colors.red[700],
-                            fontSize: 16,
-                            fontWeight: FontWeight.normal,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -1045,63 +1132,13 @@ class _BookingScreenState extends State<BookingScreen> {
                 }
                 return SizedBox.shrink();
               }),
-              if (availableDates.isNotEmpty && selectedDate != null && !_isDoctorBookingDisabled()) ...[
-                SizedBox(height: 20),
-                Center(
-                  child: ElevatedButton(
-                    onPressed: () {
-                                if (selectedDate == null) {
-                                  _showDialog("تنبيه","يرجى اختيار يوم أولاً",);
-                                  return;
-                                }
-                                
-                                // التحقق من الفترات المتاحة
-                                if (selectedShift == null) {
-                                  final appropriateShift = _getAppropriateShift(selectedDate!);
-                                  if (appropriateShift != null) {
-                                    selectedShift = appropriateShift;
-                                  } else {
-                                    _showDialog("تنبيه", "لا توجد فترة متاحة للحجز في هذا اليوم");
-                                    return;
-                                  }
-                                }
-                                
-                                if (!isDateBookable(selectedDate!)) {
-                                  _showDialog("تنبيه","هذا اليوم غير متاح للحجز، يرجى اختيار يوم آخر",);
-                                  return;
-                                }
-                                if (_isFull) {
-                                  _showDialog("تنبيه","العدد اكتمل لهذا اليوم/الفترة، لا يمكن الحجز",);
-                        return;
-                      }
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                                    builder: (_) => PatientInfoScreen(
-                            facilityId: widget.facilityId,
-                            specializationId: widget.specializationId,
-                            doctorId: widget.doctorId,
-                            selectedDate: selectedDate!,
-                            selectedShift: selectedShift,
-                            workingSchedule: widget.workingSchedule,
-                                      isReschedule: widget.isReschedule,
-                                      oldBookingData: widget.oldBookingData,
-                          ),
-                        ),
-                      );
-                    },
-                    child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 24,vertical: 12,),
-                                child: Text("متابعة لإدخال البيانات", style: TextStyle(fontSize: 18, color: Color(0xFF2FBDAF),),),
-                      ),
-                        ),
-                      ),
-                        ],
                       ],
                     ),
                   ),
                 ),
-              ],
+              // زر متابعة لإدخال البيانات - في نهاية الشاشة
+              _buildContinueButton(getAvailableDates()),
+            ],
             ),
           ),
         ),

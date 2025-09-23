@@ -24,14 +24,37 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
           .doc(widget.facilityId)
           .collection('specializations')
           .where('isActive', isEqualTo: true)
+          .orderBy('order')
           .get()
           .timeout(const Duration(seconds: 8));
 
       _allSpecialties = snapshot.docs;
       return snapshot.docs;
     } catch (e) {
-      print('خطأ في تحميل التخصصات: $e');
-      return [];
+      print('خطأ في تحميل التخصصات (الترتيب من القاعدة): $e');
+      // fallback: بدون orderBy من القاعدة، نجلب ونرتب محلياً إذا توفر الحقل
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('medicalFacilities')
+            .doc(widget.facilityId)
+            .collection('specializations')
+            .where('isActive', isEqualTo: true)
+            .get()
+            .timeout(const Duration(seconds: 8));
+
+        final docs = snapshot.docs..sort((a, b) {
+          final ad = (a.data());
+          final bd = (b.data());
+          final ao = (ad['order'] is num) ? (ad['order'] as num).toInt() : 0;
+          final bo = (bd['order'] is num) ? (bd['order'] as num).toInt() : 0;
+          return ao.compareTo(bo);
+        });
+        _allSpecialties = docs;
+        return docs;
+      } catch (e2) {
+        print('خطأ في تحميل التخصصات (فرز محلي): $e2');
+        return [];
+      }
     }
   }
 

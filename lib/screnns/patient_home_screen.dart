@@ -998,6 +998,22 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     return SingleChildScrollView(
       child: Column(
         children: [
+          // Medical Facilities Card
+          _buildCard(
+            title: "المرافق الطبية",
+            subtitle: "استكشف المرافق والحجز",
+            icon: Icons.medical_services,
+            color: Colors.green,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HospitalScreen(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 16),
           // My Bookings Card
           _buildCard(
             title: "حجوزاتي",
@@ -1015,22 +1031,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Medical Facilities Card
-          _buildCard(
-            title: "المرافق الطبية",
-            subtitle: "استكشف المرافق والحجز",
-            icon: Icons.medical_services,
-            color: Colors.green,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const HospitalScreen(),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 16),
+          
           
           // Home Clinic Card
           _buildCard(
