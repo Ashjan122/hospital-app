@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:hospital_app/services/sms_service.dart';
+import 'package:hospital_app/services/whatsapp_service.dart';
+import 'package:hospital_app/services/push_gateway_service.dart';
 
 class HomeClinicDetailsScreen extends StatefulWidget {
   final String centerId;
@@ -23,6 +26,7 @@ class _HomeClinicDetailsScreenState extends State<HomeClinicDetailsScreen>
     with SingleTickerProviderStateMixin {
   String? _loadingServiceType;
   late TabController _tabController;
+  final Set<String> _notifiedReceived = <String>{};
 
   @override
   void initState() {
@@ -73,37 +77,37 @@ class _HomeClinicDetailsScreenState extends State<HomeClinicDetailsScreen>
            children: [
              // القسم الأول: طلب عيادة للمنزل
              Container(
-               color: Colors.white,
-               child: Padding(
-                 padding: const EdgeInsets.all(16),
-                 child: Column(
-                   children: [
-                     _buildServiceCard(
-                       icon: Icons.medical_services,
-                       title: 'طبيب عمومي',
-                       description: 'زيارة طبيب عام في المنزل',
-                       color: Colors.blue,
-                       onTap: () => _sendRequest('طبيب عمومي'),
-                     ),
-                     const SizedBox(height: 16),
-                     _buildServiceCard(
-                       icon: Icons.person_pin_circle,
-                       title: 'أخصائي',
-                       description: 'زيارة طبيب أخصائي في المنزل',
-                       color: Colors.green,
-                       onTap: () => _sendRequest('أخصائي'),
-                     ),
-                     const SizedBox(height: 16),
-                     _buildServiceCard(
-                       icon: Icons.science,
-                       title: 'فحوصات',
-                       description: 'إجراء فحوصات طبية في المنزل',
-                       color: Colors.orange,
-                       onTap: () => _sendRequest('فحوصات'),
-                     ),
-                   ],
+           color: Colors.white,
+           child: Padding(
+             padding: const EdgeInsets.all(16),
+             child: Column(
+               children: [
+                 _buildServiceCard(
+                   icon: Icons.medical_services,
+                   title: 'طبيب عمومي',
+                   description: 'زيارة طبيب عام في المنزل',
+                   color: Colors.blue,
+                   onTap: () => _sendRequest('طبيب عمومي'),
                  ),
-               ),
+                 const SizedBox(height: 16),
+                 _buildServiceCard(
+                   icon: Icons.person_pin_circle,
+                   title: 'أخصائي',
+                   description: 'زيارة طبيب أخصائي في المنزل',
+                   color: Colors.green,
+                   onTap: () => _sendRequest('أخصائي'),
+                 ),
+                 const SizedBox(height: 16),
+                 _buildServiceCard(
+                   icon: Icons.science,
+                   title: 'فحوصات',
+                   description: 'إجراء فحوصات طبية في المنزل',
+                   color: Colors.orange,
+                   onTap: () => _sendRequest('فحوصات'),
+                 ),
+               ],
+             ),
+           ),
              ),
              // القسم الثاني: طلباتي
              _buildMyRequestsTab(),
@@ -279,6 +283,35 @@ class _HomeClinicDetailsScreenState extends State<HomeClinicDetailsScreen>
                 return centerId == widget.centerId;
               }).toList();
               
+              // إرسال إشعار واحد فقط لآخر طلب حالته received
+              {
+                QueryDocumentSnapshot? latestReceived;
+                Timestamp? latestTs;
+                for (final d in filteredDocs) {
+                  final m = d.data() as Map<String, dynamic>;
+                  if ((m['status'] ?? '').toString() == 'received') {
+                    final ts = m['createdAt'] is Timestamp ? m['createdAt'] as Timestamp : null;
+                    if (latestReceived == null) {
+                      latestReceived = d;
+                      latestTs = ts;
+                    } else {
+                      // قارن حسب createdAt إن وُجد، وإلا اترك الأقدم
+                      if (ts != null && (latestTs == null || ts.compareTo(latestTs) > 0)) {
+                        latestReceived = d;
+                        latestTs = ts;
+                      }
+                    }
+                  }
+                }
+                if (latestReceived != null) {
+                  final latestId = latestReceived.id;
+                  if (!_notifiedReceived.contains(latestId)) {
+                    _notifiedReceived.add(latestId);
+                    _handleReceivedNotification(latestReceived.data() as Map<String, dynamic>);
+                  }
+                }
+              }
+              
               print('DEBUG: إجمالي الطلبات: ${allDocs.length}');
               print('DEBUG: الطلبات المفلترة لهذا المركز: ${filteredDocs.length}');
               
@@ -335,6 +368,50 @@ class _HomeClinicDetailsScreenState extends State<HomeClinicDetailsScreen>
       ),
     );
   }
+
+  Future<void> _handleReceivedNotification(Map<String, dynamic> data) async {
+    try {
+      final String token = (data['patientToken'] ?? '').toString();
+      final String phone = (data['patientPhone'] ?? '').toString();
+      final String patientName = (data['patientName'] ?? '').toString();
+      final String serviceType = (data['serviceType'] ?? '').toString();
+      final String message = _composeReceivedMessage(
+        patientName: patientName,
+        serviceType: serviceType,
+      );
+
+      // Push notification via external gateway (no server key in client)
+      if (token.isNotEmpty) {
+        await PushGatewayService.sendPush(
+          token: token,
+          title: 'تطبيق جودة الطبي',
+          body: 'تم استلام طلبك وسيتم التواصل معك',
+        );
+      }
+
+      // SMS
+      if (phone.isNotEmpty) {
+        await SMSService.sendSimpleSMS(phone, message);
+      }
+
+      // WhatsApp
+      if (phone.isNotEmpty) {
+        await WhatsAppService.sendSimpleMessage(phone, message);
+      }
+    } catch (e) {
+      // تجاهل الخطأ حتى لا يؤثر على الواجهة
+    }
+  }
+
+  String _composeReceivedMessage({
+    required String patientName,
+    required String serviceType,
+  }) {
+    final String typeText = serviceType.isNotEmpty ? serviceType : 'خدمة';
+    return 'تطبيق جودة الطبي\n\nمرحبا $patientName تم استلام طلبك ($typeText) وسيتم التواصل معك';
+  }
+
+  // تم استخدام PushGatewayService بدلاً من استدعاء FCM مباشرة من التطبيق
 
   Future<List<String>> _getUserPhoneFormats() async {
     try {
