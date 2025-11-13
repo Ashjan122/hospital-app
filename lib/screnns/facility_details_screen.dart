@@ -58,7 +58,7 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                         _buildCard(
                           title: "احجز الان",
                           subtitle: "استكشف التخصصات المتاحة",
-                          icon: Icons.medical_services,
+                          icon: Icons.event,
                           color: const Color(0xFF2FBDAF),
                           onTap: () {
                             Navigator.push(
@@ -72,25 +72,17 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                           },
                         ),
                         const SizedBox(height: 16),
-                        
-                        // Insurance Companies Card
+                         // Insurance Companies Card (disabled - coming soon)
                         _buildCard(
                           title: "شركات التأمين",
-                          subtitle: "عرض شركات التأمين المتعاقدة",
+                          subtitle: "قريباً",
                           icon: Icons.security,
                           color: const Color(0xFF2FBDAF),
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => InsuranceCompaniesScreen(
-                                  facilityId: widget.facilityId,
-                                  facilityName: widget.facilityName,
-                                ),
-                              ),
-                            );
-                          },
+                          onTap: () {},
+                          disabled: true,
                         ),
+                        
+                        
                         
                         // Laboratory Results Card - تظهر فقط في مركز الرومي الطبي (وليس طب الأسنان)
                         if (widget.facilityName.contains('الرومي الطبي') && !widget.facilityName.contains('طب الأسنان')) ...[
@@ -109,6 +101,7 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                               );
                             },
                           ),
+                         
                         ],
                       ],
                     ),
@@ -128,16 +121,17 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
+    bool disabled = false,
   }) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: disabled ? null : onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Colors.white.withOpacity(disabled ? 0.6 : 1),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
+              color: Colors.grey.withOpacity(disabled ? 0.1 : 0.2),
               spreadRadius: 2,
               blurRadius: 10,
               offset: const Offset(0, 4),
@@ -151,13 +145,13 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withOpacity(disabled ? 0.06 : 0.1),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
                   icon,
                   size: 32,
-                  color: color,
+                  color: disabled ? color.withOpacity(0.5) : color,
                 ),
               ),
               const SizedBox(width: 20),
@@ -170,7 +164,7 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+                        color: disabled ? Colors.black54 : Colors.black87,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -178,7 +172,7 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                       subtitle,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey[600],
+                        color: disabled ? Colors.grey[500] : Colors.grey[600],
                       ),
                     ),
                   ],
@@ -186,7 +180,7 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
               ),
               Icon(
                 Icons.arrow_forward_ios,
-                color: color,
+                color: disabled ? color.withOpacity(0.5) : color,
                 size: 20,
               ),
             ],

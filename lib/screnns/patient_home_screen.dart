@@ -12,6 +12,8 @@ import 'package:hospital_app/screnns/home_clinic_screen.dart';
 import 'package:hospital_app/services/central_data_service.dart';
 import 'package:hospital_app/services/presence_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:badges/badges.dart' as badges;
+import 'package:package_info_plus/package_info_plus.dart';
 
 class PatientHomeScreen extends StatefulWidget {
   const PatientHomeScreen({super.key});
@@ -23,6 +25,10 @@ class PatientHomeScreen extends StatefulWidget {
 class _PatientHomeScreenState extends State<PatientHomeScreen> {
   String? patientEmail;
   String? patientName;
+  String? patientPhone;
+  bool _hasNewBookings = false;
+  int _latestBookingsCount = 0;
+  int _latestNewestCreatedAt = 0;
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
   bool _isSearching = false;
@@ -30,10 +36,14 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   bool _searchCacheReady = false;
   List<String> _supportPhones = [];
   StreamSubscription? _supportPhonesSub;
+  StreamSubscription<QuerySnapshot>? _bookingsSub;
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
+    _loadAppVersion();
+
     _loadPatientData();
     _searchController.addListener(_onSearchChanged);
     _checkDatabaseConnection();
@@ -44,7 +54,11 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     // Listen to technical support phone numbers from Firestore (live updates)
     WidgetsBinding.instance.addPostFrameCallback((_) => _listenSupportPhones());
     // Also load once immediately
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSupportPhonesOnce());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _loadSupportPhonesOnce(),
+    );
+    // Listen for new bookings to toggle the red badge
+    WidgetsBinding.instance.addPostFrameCallback((_) => _listenNewBookings());
   }
 
   Future<void> _initPresence() async {
@@ -62,16 +76,18 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       // فحص الاتصال بقاعدة البيانات
       print('فحص الاتصال بقاعدة البيانات...');
       await CentralDataService.checkExistingData();
-      
+
       // مسح Cache للتأكد من تطبيق التحديثات
       CentralDataService.clearAllCache();
       print('تم مسح Cache - البحث محدث للبحث في الأطباء والتخصصات فقط');
-      
+
       // مسح Cache إضافي للتأكد
       await Future.delayed(const Duration(milliseconds: 100));
       CentralDataService.clearAllCache();
-      print('تم مسح Cache - جاهز لاختبار عرض الأيام مع تحسين جلب workingSchedule');
-      
+      print(
+        'تم مسح Cache - جاهز لاختبار عرض الأيام مع تحسين جلب workingSchedule',
+      );
+
       // تحميل البيانات مسبقاً في Cache للبحث السريع
       print('تحميل البيانات مسبقاً للبحث السريع...');
       // تسخين الكاش مباشرة بعد تنظيفه (بانتظار الاكتمال)
@@ -81,7 +97,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           _searchCacheReady = true;
         });
       }
-      
+
       print('تم تحميل البيانات بنجاح - البحث جاهز!');
     } catch (e) {
       print('خطأ في الاتصال بقاعدة البيانات: $e');
@@ -98,18 +114,19 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     _searchController.dispose();
     _debounceTimer?.cancel();
     _supportPhonesSub?.cancel();
+    _bookingsSub?.cancel();
     super.dispose();
   }
 
   void _onSearchChanged() {
     final query = _searchController.text.trim();
-    
+
     // إلغاء البحث السابق
     _debounceTimer?.cancel();
-    
+
     // تحديث الواجهة لإظهار/إخفاء زر X
     setState(() {});
-    
+
     // إذا لم يجهز الكاش بعد، لا تنفذ البحث حتى يكتمل التحميل الأولي
     if (!_searchCacheReady) {
       return;
@@ -122,9 +139,75 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       });
       return;
     }
-    
+
     // البحث الفوري من أول حرف بدون تأخير
     _performSearch(query);
+  }
+
+  Future<void> _listenNewBookings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final patientId = prefs.getString('userId') ?? '';
+      if (patientId.isEmpty) return;
+
+      _bookingsSub?.cancel();
+      // الاستماع إلى جميع المواعيد عبر المجموعات الفرعية appointments
+      _bookingsSub = FirebaseFirestore.instance
+          .collectionGroup('appointments')
+          .where('patientId', isEqualTo: patientId)
+          .snapshots()
+          .listen((snapshot) async {
+            final lastSeenMs = prefs.getInt('bookingsLastSeenAt') ?? 0;
+            bool hasNew = false;
+            int newestCreated = 0;
+            for (final doc in snapshot.docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final ts = data['createdAt'];
+              int createdMs = 0;
+              if (ts is Timestamp) {
+                createdMs = ts.millisecondsSinceEpoch;
+              } else if (ts is int) {
+                createdMs = ts;
+              }
+              if (createdMs > newestCreated) {
+                newestCreated = createdMs;
+              }
+            }
+            _latestBookingsCount = snapshot.docs.length;
+            _latestNewestCreatedAt = newestCreated;
+            // معيار الظهور: حجز أحدث من آخر مشاهدة أو زيادة في العدد
+            final lastCount = prefs.getInt('bookingsLastCount') ?? 0;
+            if (newestCreated > lastSeenMs ||
+                _latestBookingsCount > lastCount) {
+              hasNew = true;
+            }
+            if (mounted) {
+              setState(() {
+                _hasNewBookings = hasNew;
+              });
+            }
+          }, onError: (_) {});
+    } catch (_) {}
+  }
+
+  Future<void> _openBookings() async {
+    final prefs = await SharedPreferences.getInstance();
+    // حفظ لقطه المشاهدة: الوقت الأحدث والعدد الحالي
+    final seenAt =
+        _latestNewestCreatedAt > 0
+            ? _latestNewestCreatedAt
+            : DateTime.now().millisecondsSinceEpoch;
+    await prefs.setInt('bookingsLastSeenAt', seenAt);
+    await prefs.setInt('bookingsLastCount', _latestBookingsCount);
+    if (mounted) {
+      setState(() {
+        _hasNewBookings = false;
+      });
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const PatientBookingsScreen()),
+      );
+    }
   }
 
   Future<void> _warmupSearchCache() async {
@@ -147,21 +230,23 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) return;
-    
+
     setState(() {
       _isSearching = true;
     });
-    
+
     try {
       print('البحث عن: $query');
-      final results = await CentralDataService.searchDoctorsAndSpecialties(query);
+      final results = await CentralDataService.searchDoctorsAndSpecialties(
+        query,
+      );
       print('عدد النتائج: ${results.length}');
-      
+
       setState(() {
         _searchResults = results;
         _isSearching = false;
       });
-      
+
       // إلغاء رسالة "لم يتم العثور على نتائج" مع خيار مسح الكاش
     } catch (e) {
       print('خطأ في البحث: $e');
@@ -197,7 +282,36 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     setState(() {
       patientEmail = prefs.getString('userEmail');
       patientName = prefs.getString('userName') ?? 'مريض عزيز';
+      // حاول جلب رقم الهاتف من أكثر من مفتاح شائع الاستخدام (خاصة المدخل أثناء تسجيل الدخول)
+      patientPhone =
+          prefs.getString('loginPhone') ??
+          prefs.getString('userLoginPhone') ??
+          prefs.getString('userPhone') ??
+          prefs.getString('phoneNumber') ??
+          prefs.getString('phone');
     });
+  }
+
+  String _formatLocalPhone(String? phone) {
+    if (phone == null) return '';
+    String p = phone.trim();
+    // احتفظ بالأرقام فقط
+    p = p.replaceAll(RegExp(r"[^0-9]"), '');
+    // إزالة بادئة 00 إن وُجدت
+    if (p.startsWith('00')) {
+      p = p.substring(2);
+    }
+    // إزالة مفاتيح دول شائعة: العراق 964 والسودان 249
+    if (p.startsWith('964')) {
+      p = p.substring(3);
+    } else if (p.startsWith('249')) {
+      p = p.substring(3);
+    }
+    // ضمان البدء بـ 0 إذا كان هناك أرقام
+    if (p.isNotEmpty && !p.startsWith('0')) {
+      p = '0$p';
+    }
+    return p;
   }
 
   void _showTechnicalSupportDialog() {
@@ -226,17 +340,14 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // Description
                 Text(
                   "يرجى الاتصال على الأرقام التالية:",
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.black87,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.black87),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // Phone Numbers (from Firestore)
                 if (_supportPhones.isEmpty)
                   Padding(
@@ -246,13 +357,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                   )
-                else
-                  ...[
-                    for (int i = 0; i < _supportPhones.length; i++) ...[
-                      _buildPhoneNumber(_supportPhones[i]),
-                      if (i < _supportPhones.length - 1) const SizedBox(height: 8),
-                    ]
+                else ...[
+                  for (int i = 0; i < _supportPhones.length; i++) ...[
+                    _buildPhoneNumber(_supportPhones[i]),
+                    if (i < _supportPhones.length - 1)
+                      const SizedBox(height: 8),
                   ],
+                ],
               ],
             ),
             actions: [
@@ -282,23 +393,28 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         .collection('support')
         .doc('phones')
         .snapshots()
-        .listen((doc) {
-      if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>?;
-        final numbers = (data?['numbers'] as List?)
-            ?.map((e) => (e ?? '').toString().trim())
-            .where((s) => s.isNotEmpty)
-            .cast<String>()
-            .toList() ?? [];
-        if (mounted) {
-          setState(() {
-            _supportPhones = numbers;
-          });
-        }
-      }
-    }, onError: (e) {
-      print('خطأ في الاستماع لأرقام الدعم: $e');
-    });
+        .listen(
+          (doc) {
+            if (doc.exists) {
+              final data = doc.data() as Map<String, dynamic>?;
+              final numbers =
+                  (data?['numbers'] as List?)
+                      ?.map((e) => (e ?? '').toString().trim())
+                      .where((s) => s.isNotEmpty)
+                      .cast<String>()
+                      .toList() ??
+                  [];
+              if (mounted) {
+                setState(() {
+                  _supportPhones = numbers;
+                });
+              }
+            }
+          },
+          onError: (e) {
+            print('خطأ في الاستماع لأرقام الدعم: $e');
+          },
+        );
   }
 
   Future<void> _loadSupportPhonesOnce() async {
@@ -310,11 +426,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           .timeout(const Duration(seconds: 3));
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>?;
-        final numbers = (data?['numbers'] as List?)
-            ?.map((e) => (e ?? '').toString().trim())
-            .where((s) => s.isNotEmpty)
-            .cast<String>()
-            .toList() ?? [];
+        final numbers =
+            (data?['numbers'] as List?)
+                ?.map((e) => (e ?? '').toString().trim())
+                .where((s) => s.isNotEmpty)
+                .cast<String>()
+                .toList() ??
+            [];
         if (mounted) {
           setState(() {
             _supportPhones = numbers;
@@ -379,11 +497,153 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
+  void _showEditNameDialog() {
+    final TextEditingController nameController = TextEditingController(
+      text: patientName ?? '',
+    );
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            title: const Text(
+              'تعديل الاسم',
+              style: TextStyle(
+                color: Color(0xFF2FBDAF),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+            content: TextField(
+              controller: nameController,
+              textDirection: TextDirection.rtl,
+              decoration: InputDecoration(
+                labelText: 'الاسم',
+                hintText: 'أدخل اسمك',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF2FBDAF),
+                    width: 2,
+                  ),
+                ),
+              ),
+              autofocus: true,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text(
+                  'إلغاء',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final newName = nameController.text.trim();
+                  if (newName.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('يرجى إدخال اسم صحيح'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
+                  try {
+                    final prefs = await SharedPreferences.getInstance();
+                    final patientId = prefs.getString('userId');
+                    
+                    if (patientId == null || patientId.isEmpty) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('خطأ: لم يتم العثور على معرف المستخدم'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                      return;
+                    }
+
+                    // حفظ الاسم في قاعدة البيانات
+                    await FirebaseFirestore.instance
+                        .collection('patients')
+                        .doc(patientId)
+                        .update({
+                      'name': newName,
+                      'updatedAt': FieldValue.serverTimestamp(),
+                    });
+
+                    // حفظ الاسم في SharedPreferences
+                    await prefs.setString('userName', newName);
+                    
+                    if (mounted) {
+                      setState(() {
+                        patientName = newName;
+                      });
+                      Navigator.of(context).pop();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('تم تحديث الاسم بنجاح'),
+                          backgroundColor: Color(0xFF2FBDAF),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('خطأ في تحديث الاسم: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2FBDAF),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('حفظ'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<bool> _openBookingByDoctorName(String doctorName) async {
     try {
       String _normalizeName(String s) {
         final map = {
-          'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ة': 'ه', 'ى': 'ي', 'ئ': 'ي', 'ؤ': 'و', 'ـ': '', 'ً': '', 'ٌ': '', 'ٍ': '', 'َ': '', 'ُ': '', 'ِ': '', 'ّ': ''
+          'أ': 'ا',
+          'إ': 'ا',
+          'آ': 'ا',
+          'ة': 'ه',
+          'ى': 'ي',
+          'ئ': 'ي',
+          'ؤ': 'و',
+          'ـ': '',
+          'ً': '',
+          'ٌ': '',
+          'ٍ': '',
+          'َ': '',
+          'ُ': '',
+          'ِ': '',
+          'ّ': '',
         };
         String out = s.trim();
         map.forEach((k, v) => out = out.replaceAll(k, v));
@@ -392,40 +652,47 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         return out.toLowerCase();
       }
 
-      final target = _normalizeName(doctorName.startsWith('د') ? doctorName.substring(1) : doctorName);
+      final target = _normalizeName(
+        doctorName.startsWith('د') ? doctorName.substring(1) : doctorName,
+      );
 
       // Search nested collections for doctor by name
       Future<bool> searchInRoot(String rootCollection) async {
-        final facilities = await FirebaseFirestore.instance
-            .collection(rootCollection)
-            .get();
+        final facilities =
+            await FirebaseFirestore.instance.collection(rootCollection).get();
 
         for (final facilityDoc in facilities.docs) {
-          final specs = await FirebaseFirestore.instance
-              .collection(rootCollection)
-              .doc(facilityDoc.id)
-              .collection('specializations')
-              .get();
+          final specs =
+              await FirebaseFirestore.instance
+                  .collection(rootCollection)
+                  .doc(facilityDoc.id)
+                  .collection('specializations')
+                  .get();
 
           for (final specDoc in specs.docs) {
-            final doctors = await FirebaseFirestore.instance
-                .collection(rootCollection)
-                .doc(facilityDoc.id)
-                .collection('specializations')
-                .doc(specDoc.id)
-                .collection('doctors')
-                .get();
+            final doctors =
+                await FirebaseFirestore.instance
+                    .collection(rootCollection)
+                    .doc(facilityDoc.id)
+                    .collection('specializations')
+                    .doc(specDoc.id)
+                    .collection('doctors')
+                    .get();
 
             for (final d in doctors.docs) {
               final data = d.data() as Map<String, dynamic>;
               final docName = (data['docName'] ?? '').toString();
               if (_normalizeName(docName) != target) continue;
 
-              final workingSchedule = data['workingSchedule'] as Map<String, dynamic>? ?? {};
+              final workingSchedule =
+                  data['workingSchedule'] as Map<String, dynamic>? ?? {};
 
               if (workingSchedule.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('لا يوجد جدول عمل للطبيب'), backgroundColor: Colors.red),
+                  const SnackBar(
+                    content: Text('لا يوجد جدول عمل للطبيب'),
+                    backgroundColor: Colors.red,
+                  ),
                 );
                 return false;
               }
@@ -434,16 +701,21 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => BookingScreen(
-                    name: docName,
-                    workingSchedule: workingSchedule,
-                    facilityId: facilityDoc.id,
-                    specializationId: specDoc.id,
-                    doctorId: d.id,
-                    showDoctorInfo: true,
-                    doctorSpecialty: (data['specialization'] ?? '').toString(),
-                    centerName: (facilityDoc.data() as Map<String, dynamic>?)?['name'] ?? '',
-                  ),
+                  builder:
+                      (context) => BookingScreen(
+                        name: docName,
+                        workingSchedule: workingSchedule,
+                        facilityId: facilityDoc.id,
+                        specializationId: specDoc.id,
+                        doctorId: d.id,
+                        showDoctorInfo: true,
+                        doctorSpecialty:
+                            (data['specialization'] ?? '').toString(),
+                        centerName:
+                            (facilityDoc.data()
+                                as Map<String, dynamic>?)?['name'] ??
+                            '',
+                      ),
                 ),
               );
               return true;
@@ -457,12 +729,18 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       if (await searchInRoot('facilities')) return true;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('لم يتم العثور على الطبيب: $doctorName'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('لم يتم العثور على الطبيب: $doctorName'),
+          backgroundColor: Colors.red,
+        ),
       );
       return false;
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر فتح صفحة الحجز: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('تعذر فتح صفحة الحجز: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
       return false;
     }
@@ -476,12 +754,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       print('[AD] Checking for ad... lastShownAdId=$lastShownAdId');
 
       // First check for update ads (priority)
-      QuerySnapshot updateSnapshot = await FirebaseFirestore.instance
-          .collection('ads')
-          .where('show', isEqualTo: true)
-          .where('tybe', isEqualTo: 'update')
-          .limit(1)
-          .get();
+      QuerySnapshot updateSnapshot =
+          await FirebaseFirestore.instance
+              .collection('ads')
+              .where('show', isEqualTo: true)
+              .where('tybe', isEqualTo: 'update')
+              .limit(1)
+              .get();
 
       QuerySnapshot snapshot;
       if (updateSnapshot.docs.isNotEmpty) {
@@ -491,11 +770,12 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       } else {
         // Otherwise, get any ad with show == true
         print('[AD] No update ad found, checking for other ads');
-        snapshot = await FirebaseFirestore.instance
-            .collection('ads')
-            .where('show', isEqualTo: true)
-            .limit(1)
-            .get();
+        snapshot =
+            await FirebaseFirestore.instance
+                .collection('ads')
+                .where('show', isEqualTo: true)
+                .limit(1)
+                .get();
       }
 
       if (snapshot.docs.isEmpty) {
@@ -506,14 +786,19 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       final doc = snapshot.docs.first;
       final data = doc.data() as Map<String, dynamic>;
       // Use business id field if available, otherwise doc id
-      final adId = (data['id']?.toString().isNotEmpty ?? false) ? data['id'].toString() : doc.id;
+      final adId =
+          (data['id']?.toString().isNotEmpty ?? false)
+              ? data['id'].toString()
+              : doc.id;
       print('[AD] Found ad id=$adId');
-      
+
       final tybe = (data['tybe'] ?? '').toString();
-      
+
       // Check if ad was already shown (for all ad types including update)
       if (adId == lastShownAdId) {
-        print('[AD] Already shown, skipping. adId=$adId, lastShownAdId=$lastShownAdId');
+        print(
+          '[AD] Already shown, skipping. adId=$adId, lastShownAdId=$lastShownAdId',
+        );
         return;
       }
 
@@ -537,290 +822,484 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           return Directionality(
             textDirection: TextDirection.rtl,
             child: StatefulBuilder(
-              builder: (ctx2, setState) => AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                contentPadding: EdgeInsets.zero,
-                content: Stack(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              builder:
+                  (ctx2, setState) => AlertDialog(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    contentPadding: EdgeInsets.zero,
+                    content: Stack(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              // Only show close button for non-update ads
-                              if (tybe != 'update')
-                                IconButton(
-                                  onPressed: () => Navigator.of(ctx).pop(),
-                                  icon: const Icon(Icons.close, color: Colors.black54),
-                                  splashRadius: 18,
-                                )
-                              else
-                                const SizedBox(width: 48), // Placeholder for spacing
-                              if (centerLogoUrl.isNotEmpty)
-                                CircleAvatar(
-                                  radius: 20,
-                                  backgroundColor: Colors.white,
-                                  backgroundImage: NetworkImage(centerLogoUrl),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  // Only show close button for non-update ads
+                                  if (tybe != 'update')
+                                    IconButton(
+                                      onPressed: () => Navigator.of(ctx).pop(),
+                                      icon: const Icon(
+                                        Icons.close,
+                                        color: Colors.black54,
+                                      ),
+                                      splashRadius: 18,
+                                    )
+                                  else
+                                    const SizedBox(
+                                      width: 48,
+                                    ), // Placeholder for spacing
+                                  if (centerLogoUrl.isNotEmpty)
+                                    CircleAvatar(
+                                      radius: 20,
+                                      backgroundColor: Colors.white,
+                                      backgroundImage: NetworkImage(
+                                        centerLogoUrl,
+                                      ),
+                                    ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              if (title.isNotEmpty)
+                                Text(
+                                  title,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              if (tybe == 'doctor' &&
+                                  doctorName.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  (doctorName.startsWith('د')
+                                      ? doctorName
+                                      : 'د. $doctorName'),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Color(0xFFB71C1C),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 22,
+                                  ),
+                                ),
+                              ],
+
+                              const SizedBox(height: 12),
+
+                              if (tybe == 'doctor' && doctorPhotoUrl.isNotEmpty)
+                                Center(
+                                  child: Container(
+                                    width: 120,
+                                    height: 120,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: const Color(0xFFB71C1C),
+                                        width: 6,
+                                      ),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4.0),
+                                      child: CircleAvatar(
+                                        backgroundImage: NetworkImage(
+                                          doctorPhotoUrl,
+                                        ),
+                                        backgroundColor: Colors.grey[200],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                              const SizedBox(height: 16),
+
+                              if (message.isNotEmpty)
+                                Text(
+                                  message,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              const SizedBox(height: 16),
+
+                              // Update button for update ads
+                              if (tybe == 'update' &&
+                                  bottonLabel.isNotEmpty &&
+                                  bottonUrl.isNotEmpty)
+                                ElevatedButton(
+                                  onPressed:
+                                      isLoading
+                                          ? null
+                                          : () async {
+                                            if (!mounted) return;
+                                            setState(() => isLoading = true);
+                                            try {
+                                              final Uri url = Uri.parse(
+                                                bottonUrl,
+                                              );
+                                              print(
+                                                '[UPDATE] Attempting to open URL: $bottonUrl',
+                                              );
+
+                                              // Try different launch modes
+                                              bool launched = false;
+
+                                              // First try: external application (browser)
+                                              if (await canLaunchUrl(url)) {
+                                                try {
+                                                  await launchUrl(
+                                                    url,
+                                                    mode:
+                                                        LaunchMode
+                                                            .externalApplication,
+                                                  );
+                                                  launched = true;
+                                                  print(
+                                                    '[UPDATE] Successfully opened in external app',
+                                                  );
+                                                } catch (e) {
+                                                  print(
+                                                    '[UPDATE] Failed to open in external app: $e',
+                                                  );
+                                                }
+                                              }
+
+                                              // Second try: platform default
+                                              if (!launched) {
+                                                try {
+                                                  await launchUrl(
+                                                    url,
+                                                    mode:
+                                                        LaunchMode
+                                                            .platformDefault,
+                                                  );
+                                                  launched = true;
+                                                  print(
+                                                    '[UPDATE] Successfully opened with platform default',
+                                                  );
+                                                } catch (e) {
+                                                  print(
+                                                    '[UPDATE] Failed to open with platform default: $e',
+                                                  );
+                                                }
+                                              }
+
+                                              // Third try: in-app web view
+                                              if (!launched) {
+                                                try {
+                                                  await launchUrl(
+                                                    url,
+                                                    mode:
+                                                        LaunchMode.inAppWebView,
+                                                  );
+                                                  launched = true;
+                                                  print(
+                                                    '[UPDATE] Successfully opened in web view',
+                                                  );
+                                                } catch (e) {
+                                                  print(
+                                                    '[UPDATE] Failed to open in web view: $e',
+                                                  );
+                                                }
+                                              }
+
+                                              if (launched) {
+                                                // Mark update ad as shown after successful launch
+                                                await prefs.setString(
+                                                  'lastShownAdId',
+                                                  adId,
+                                                );
+                                                Navigator.of(ctx).pop();
+                                              } else {
+                                                // Copy URL to clipboard as fallback
+                                                await Clipboard.setData(
+                                                  ClipboardData(
+                                                    text: bottonUrl,
+                                                  ),
+                                                );
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'لا يمكن فتح الرابط. تم نسخ الرابط: $bottonUrl',
+                                                    ),
+                                                    backgroundColor:
+                                                        Colors.orange,
+                                                    duration: const Duration(
+                                                      seconds: 5,
+                                                    ),
+                                                    action: SnackBarAction(
+                                                      label: 'نسخ مرة أخرى',
+                                                      textColor: Colors.white,
+                                                      onPressed: () async {
+                                                        await Clipboard.setData(
+                                                          ClipboardData(
+                                                            text: bottonUrl,
+                                                          ),
+                                                        );
+                                                      },
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            } catch (e) {
+                                              print(
+                                                '[UPDATE] Error opening URL: $e',
+                                              );
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'خطأ في فتح رابط التحديث: $e',
+                                                  ),
+                                                  backgroundColor: Colors.red,
+                                                  duration: const Duration(
+                                                    seconds: 5,
+                                                  ),
+                                                ),
+                                              );
+                                            } finally {
+                                              if (context.mounted)
+                                                setState(
+                                                  () => isLoading = false,
+                                                );
+                                            }
+                                          },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF2FBDAF),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                  child:
+                                      isLoading
+                                          ? const SizedBox(
+                                            height: 22,
+                                            width: 22,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                    Colors.white,
+                                                  ),
+                                            ),
+                                          )
+                                          : Text(bottonLabel),
+                                ),
+
+                              // Doctor booking button for doctor ads
+                              if (tybe == 'doctor' && doctorName.isNotEmpty)
+                                ElevatedButton(
+                                  onPressed:
+                                      isLoading
+                                          ? null
+                                          : () async {
+                                            if (!mounted) return;
+                                            setState(() => isLoading = true);
+                                            try {
+                                              final results =
+                                                  await CentralDataService.searchDoctorsAndSpecialties(
+                                                    doctorName,
+                                                  );
+                                              Map<String, dynamic>? match;
+                                              String _norm(String s) {
+                                                final map = {
+                                                  'أ': 'ا',
+                                                  'إ': 'ا',
+                                                  'آ': 'ا',
+                                                  'ة': 'ه',
+                                                  'ى': 'ي',
+                                                  'ئ': 'ي',
+                                                  'ؤ': 'و',
+                                                  'ـ': '',
+                                                };
+                                                String out = s.trim();
+                                                map.forEach((k, v) {
+                                                  out = out.replaceAll(k, v);
+                                                });
+                                                return out
+                                                    .replaceAll(
+                                                      RegExp(r"\s+"),
+                                                      ' ',
+                                                    )
+                                                    .toLowerCase();
+                                              }
+
+                                              final target = _norm(
+                                                doctorName.startsWith('د')
+                                                    ? doctorName.substring(1)
+                                                    : doctorName,
+                                              );
+                                              for (final r in results) {
+                                                if (r['type'] == 'doctor' &&
+                                                    _norm(r['name'] ?? '') ==
+                                                        target) {
+                                                  match = r;
+                                                  break;
+                                                }
+                                              }
+                                              match ??= results
+                                                  .cast<Map<String, dynamic>?>()
+                                                  .firstWhere(
+                                                    (r) =>
+                                                        (r?['type'] ==
+                                                            'doctor') &&
+                                                        _norm(
+                                                          r?['name'] ?? '',
+                                                        ).contains(target),
+                                                    orElse: () => null,
+                                                  );
+
+                                              if (match != null &&
+                                                  match.isNotEmpty) {
+                                                final schedule =
+                                                    match['workingSchedule']
+                                                        as Map<
+                                                          String,
+                                                          dynamic
+                                                        >? ??
+                                                    {};
+                                                if (schedule.isNotEmpty) {
+                                                  final facilityId =
+                                                      (match['facilityId'] ??
+                                                              '')
+                                                          .toString();
+                                                  final specializationId =
+                                                      (match['specializationId'] ??
+                                                              '')
+                                                          .toString();
+                                                  final doctorId =
+                                                      (match['id'] ?? '')
+                                                          .toString();
+                                                  final centerName =
+                                                      (match['centerName'] ??
+                                                              '')
+                                                          .toString();
+                                                  final specName =
+                                                      (match['specialization'] ??
+                                                              '')
+                                                          .toString();
+                                                  if (!context.mounted) return;
+                                                  Navigator.of(ctx).pop();
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(
+                                                      builder:
+                                                          (_) => BookingScreen(
+                                                            name:
+                                                                (match?['name'] ??
+                                                                        doctorName)
+                                                                    .toString(),
+                                                            workingSchedule:
+                                                                schedule,
+                                                            facilityId:
+                                                                facilityId,
+                                                            specializationId:
+                                                                specializationId,
+                                                            doctorId: doctorId,
+                                                            showDoctorInfo:
+                                                                true,
+                                                            doctorSpecialty:
+                                                                specName,
+                                                            centerName:
+                                                                centerName,
+                                                          ),
+                                                    ),
+                                                  );
+                                                  return;
+                                                }
+                                              }
+
+                                              // fallback
+                                              if (!context.mounted) return;
+                                              Navigator.of(ctx).pop();
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder:
+                                                      (
+                                                        _,
+                                                      ) => DoctorBookingLoaderTemp(
+                                                        name: doctorName,
+                                                        facilityId:
+                                                            adFacilityId
+                                                                    .isNotEmpty
+                                                                ? adFacilityId
+                                                                : null,
+                                                        specializationId:
+                                                            adSpecializationId
+                                                                    .isNotEmpty
+                                                                ? adSpecializationId
+                                                                : null,
+                                                        centralDoctorId:
+                                                            adCentralDoctorId
+                                                                    .isNotEmpty
+                                                                ? adCentralDoctorId
+                                                                : null,
+                                                      ),
+                                                ),
+                                              );
+                                            } finally {
+                                              if (context.mounted)
+                                                setState(
+                                                  () => isLoading = false,
+                                                );
+                                            }
+                                          },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFB71C1C),
+                                    foregroundColor: Colors.black,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                  child:
+                                      isLoading
+                                          ? const SizedBox(
+                                            height: 22,
+                                            width: 22,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                    Colors.black,
+                                                  ),
+                                            ),
+                                          )
+                                          : const Text('احجز الآن'),
                                 ),
                             ],
                           ),
-
-                          const SizedBox(height: 8),
-
-                          if (title.isNotEmpty)
-                            Text(
-                              title,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 18,
-                              ),
-                            ),
-                          if (tybe == 'doctor' && doctorName.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              (doctorName.startsWith('د') ? doctorName : 'د. $doctorName'),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Color(0xFFB71C1C),
-                                fontWeight: FontWeight.w900,
-                                fontSize: 22,
-                              ),
-                            ),
-                          ],
-
-                          const SizedBox(height: 12),
-
-                          if (tybe == 'doctor' && doctorPhotoUrl.isNotEmpty)
-                            Center(
-                              child: Container(
-                                width: 120,
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: const Color(0xFFB71C1C), width: 6),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(4.0),
-                                  child: CircleAvatar(
-                                    backgroundImage: NetworkImage(doctorPhotoUrl),
-                                    backgroundColor: Colors.grey[200],
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                          const SizedBox(height: 16),
-
-                          if (message.isNotEmpty)
-                            Text(
-                              message,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 18,
-                              ),
-                            ),
-                          const SizedBox(height: 16),
-                          
-                          // Update button for update ads
-                          if (tybe == 'update' && bottonLabel.isNotEmpty && bottonUrl.isNotEmpty)
-                            ElevatedButton(
-                              onPressed: isLoading
-                                  ? null
-                                  : () async {
-                                      if (!mounted) return;
-                                      setState(() => isLoading = true);
-                                      try {
-                                        final Uri url = Uri.parse(bottonUrl);
-                                        print('[UPDATE] Attempting to open URL: $bottonUrl');
-                                        
-                                        // Try different launch modes
-                                        bool launched = false;
-                                        
-                                        // First try: external application (browser)
-                                        if (await canLaunchUrl(url)) {
-                                          try {
-                                            await launchUrl(url, mode: LaunchMode.externalApplication);
-                                            launched = true;
-                                            print('[UPDATE] Successfully opened in external app');
-                                          } catch (e) {
-                                            print('[UPDATE] Failed to open in external app: $e');
-                                          }
-                                        }
-                                        
-                                        // Second try: platform default
-                                        if (!launched) {
-                                          try {
-                                            await launchUrl(url, mode: LaunchMode.platformDefault);
-                                            launched = true;
-                                            print('[UPDATE] Successfully opened with platform default');
-                                          } catch (e) {
-                                            print('[UPDATE] Failed to open with platform default: $e');
-                                          }
-                                        }
-                                        
-                                        // Third try: in-app web view
-                                        if (!launched) {
-                                          try {
-                                            await launchUrl(url, mode: LaunchMode.inAppWebView);
-                                            launched = true;
-                                            print('[UPDATE] Successfully opened in web view');
-                                          } catch (e) {
-                                            print('[UPDATE] Failed to open in web view: $e');
-                                          }
-                                        }
-                                        
-                                        if (launched) {
-                                          // Mark update ad as shown after successful launch
-                                          await prefs.setString('lastShownAdId', adId);
-                                          Navigator.of(ctx).pop();
-                                        } else {
-                                          // Copy URL to clipboard as fallback
-                                          await Clipboard.setData(ClipboardData(text: bottonUrl));
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('لا يمكن فتح الرابط. تم نسخ الرابط: $bottonUrl'),
-                                              backgroundColor: Colors.orange,
-                                              duration: const Duration(seconds: 5),
-                                              action: SnackBarAction(
-                                                label: 'نسخ مرة أخرى',
-                                                textColor: Colors.white,
-                                                onPressed: () async {
-                                                  await Clipboard.setData(ClipboardData(text: bottonUrl));
-                                                },
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      } catch (e) {
-                                        print('[UPDATE] Error opening URL: $e');
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text('خطأ في فتح رابط التحديث: $e'),
-                                            backgroundColor: Colors.red,
-                                            duration: const Duration(seconds: 5),
-                                          ),
-                                        );
-                                      } finally {
-                                        if (context.mounted) setState(() => isLoading = false);
-                                      }
-                                    },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF2FBDAF),
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-                              ),
-                              child: isLoading
-                                  ? const SizedBox(
-                                      height: 22,
-                                      width: 22,
-                                      child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
-                                    )
-                                  : Text(bottonLabel),
-                            ),
-                          
-                          // Doctor booking button for doctor ads
-                          if (tybe == 'doctor' && doctorName.isNotEmpty)
-                            ElevatedButton(
-                              onPressed: isLoading
-                                  ? null
-                                  : () async {
-                                      if (!mounted) return;
-                                      setState(() => isLoading = true);
-                                      try {
-                                        final results = await CentralDataService.searchDoctorsAndSpecialties(doctorName);
-                                        Map<String, dynamic>? match;
-                                        String _norm(String s) {
-                                          final map = {'أ':'ا','إ':'ا','آ':'ا','ة':'ه','ى':'ي','ئ':'ي','ؤ':'و','ـ':''};
-                                          String out = s.trim();
-                                          map.forEach((k,v){ out = out.replaceAll(k,v); });
-                                          return out.replaceAll(RegExp(r"\s+"), ' ').toLowerCase();
-                                        }
-                                        final target = _norm(doctorName.startsWith('د') ? doctorName.substring(1) : doctorName);
-                                        for (final r in results) {
-                                          if (r['type'] == 'doctor' && _norm(r['name'] ?? '') == target) { match = r; break; }
-                                        }
-                                        match ??= results.cast<Map<String, dynamic>?>().firstWhere(
-                                          (r) => (r?['type'] == 'doctor') && _norm(r?['name'] ?? '').contains(target),
-                                          orElse: () => null,
-                                        );
-
-                                        if (match != null && match.isNotEmpty) {
-                                          final schedule = match['workingSchedule'] as Map<String, dynamic>? ?? {};
-                                          if (schedule.isNotEmpty) {
-                                            final facilityId = (match['facilityId'] ?? '').toString();
-                                            final specializationId = (match['specializationId'] ?? '').toString();
-                                            final doctorId = (match['id'] ?? '').toString();
-                                            final centerName = (match['centerName'] ?? '').toString();
-                                            final specName = (match['specialization'] ?? '').toString();
-                                            if (!context.mounted) return;
-                                            Navigator.of(ctx).pop();
-                                            Navigator.of(context).push(
-                                              MaterialPageRoute(
-                                                builder: (_) => BookingScreen(
-                                                  name: (match?['name'] ?? doctorName).toString(),
-                                                  workingSchedule: schedule,
-                                                  facilityId: facilityId,
-                                                  specializationId: specializationId,
-                                                  doctorId: doctorId,
-                                                  showDoctorInfo: true,
-                                                  doctorSpecialty: specName,
-                                                  centerName: centerName,
-                                                ),
-                                              ),
-                                            );
-                                            return;
-                                          }
-                                        }
-
-                                        // fallback
-                                        if (!context.mounted) return;
-                                        Navigator.of(ctx).pop();
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (_) => DoctorBookingLoaderTemp(
-                                              name: doctorName,
-                                              facilityId: adFacilityId.isNotEmpty ? adFacilityId : null,
-                                              specializationId: adSpecializationId.isNotEmpty ? adSpecializationId : null,
-                                              centralDoctorId: adCentralDoctorId.isNotEmpty ? adCentralDoctorId : null,
-                                            ),
-                                          ),
-                                        );
-                                      } finally {
-                                        if (context.mounted) setState(() => isLoading = false);
-                                      }
-                                    },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFFB71C1C),
-                                foregroundColor: Colors.black,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-                              ),
-                              child: isLoading
-                                  ? const SizedBox(
-                                      height: 22,
-                                      width: 22,
-                                      child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.black)),
-                                    )
-                                  : const Text('احجز الآن'),
-                            ),
-
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
             ),
           );
         },
@@ -835,6 +1314,17 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       }
     } catch (e) {
       print('[AD] Error showing ad: $e');
+    }
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      setState(() {
+        _appVersion = info.version; // يقرأ "1.0.0" من pubspec.yaml
+      });
+    } catch (e) {
+      print('خطأ في قراءة رقم الإصدار: $e');
     }
   }
 
@@ -856,34 +1346,114 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               fontSize: 30,
             ),
           ),
-          leading: IconButton(
-            icon: const Icon(Icons.info_outline, color: Color(0xFF2FBDAF)),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const AboutScreen()),
-              );
-            },
-          ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.logout, color: Color(0xFF2FBDAF)),
-              onPressed: () async {
-                // Clear saved login data
-                final prefs = await SharedPreferences.getInstance();
-                final patientId = prefs.getString('userId') ?? '';
-                await PresenceService.setOffline(patientId: patientId);
-                await prefs.clear();
-
-                // Navigate to login screen
-                if (context.mounted) {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (context) => const LoginScreen()),
-                    (route) => false,
-                  );
-                }
-              },
+              onPressed: _openBookings,
+              icon: badges.Badge(
+                position: badges.BadgePosition.topEnd(top: 0, end: 0),
+                showBadge: _hasNewBookings,
+                badgeContent: const SizedBox.shrink(),
+                badgeStyle: const badges.BadgeStyle(
+                  badgeColor: Colors.red,
+                  padding: EdgeInsets.all(4),
+                  elevation: 0,
+                ),
+                child: const Icon(Icons.list_alt, color: Color(0xFF2FBDAF)),
+              ),
             ),
           ],
+        ),
+        // قائمة جانبية تحتوي على اسم المستخدم ورقم الهاتف وحول التطبيق وتسجيل الخروج
+        drawer: Drawer(
+          child: Directionality(
+            textDirection: TextDirection.rtl,
+            child: MediaQuery.removePadding(
+              context: context,
+              removeTop: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    decoration: const BoxDecoration(color: Color(0xFF2FBDAF)),
+                    padding: const EdgeInsets.fromLTRB(16, 40, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                patientName ?? 'مستخدم',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 20,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: _showEditNameDialog,
+                              icon: const Icon(
+                                Icons.edit,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _formatLocalPhone(patientPhone),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.info_outline,
+                      color: Color(0xFF2FBDAF),
+                    ),
+                    title: const Text('حول التطبيق'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const AboutScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.logout, color: Color(0xFFB71C1C)),
+                    title: const Text('تسجيل الخروج'),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final prefs = await SharedPreferences.getInstance();
+                      final patientId = prefs.getString('userId') ?? '';
+                      await PresenceService.setOffline(patientId: patientId);
+                      await prefs.clear();
+                      if (context.mounted) {
+                        Navigator.of(context).pushAndRemoveUntil(
+                          MaterialPageRoute(
+                            builder: (context) => const LoginScreen(),
+                          ),
+                          (route) => false,
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
         body: SafeArea(
           child: Container(
@@ -910,25 +1480,23 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                           color: Colors.grey[500],
                           fontSize: 16,
                         ),
-                        prefixIcon: Icon(
-                          Icons.search,
-                          color: Colors.grey[500],
-                        ),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: Icon(
-                                  Icons.clear,
-                                  color: Colors.grey[500],
-                                ),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() {
-                                    _searchResults = [];
-                                    _isSearching = false;
-                                  });
-                                },
-                              )
-                            : null,
+                        prefixIcon: Icon(Icons.search, color: Colors.grey[500]),
+                        suffixIcon:
+                            _searchController.text.isNotEmpty
+                                ? IconButton(
+                                  icon: Icon(
+                                    Icons.clear,
+                                    color: Colors.grey[500],
+                                  ),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      _searchResults = [];
+                                      _isSearching = false;
+                                    });
+                                  },
+                                )
+                                : null,
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 20,
@@ -940,11 +1508,12 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
                   // Search Results or Cards section
                   Expanded(
-                    child: _searchController.text.trim().isNotEmpty
-                        ? _buildSearchResults()
-                        : _buildMainCards(),
+                    child:
+                        _searchController.text.trim().isNotEmpty
+                            ? _buildSearchResults()
+                            : _buildMainCards(),
                   ),
-                  
+
                   // Technical Support Footer - في آخر الصفحة دائماً
                   GestureDetector(
                     onTap: _showTechnicalSupportDialog,
@@ -981,6 +1550,16 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                               ),
                             ],
                           ),
+                          if (_appVersion.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              "رقم الإصدار : $_appVersion",
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1002,51 +1581,35 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           _buildCard(
             title: "المرافق الطبية",
             subtitle: "استكشف المرافق والحجز",
-            icon: Icons.medical_services,
+            icon: Icons.apartment,
             color: Colors.green,
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const HospitalScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const HospitalScreen()),
               );
             },
           ),
           const SizedBox(height: 16),
           // My Bookings Card
-          _buildCard(
+          /*_buildCard(
             title: "حجوزاتي",
             subtitle: "عرض وإدارة حجوزاتك",
             icon: Icons.calendar_today,
             color: const Color(0xFF2FBDAF),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const PatientBookingsScreen(),
-                ),
-              );
-            },
+            onTap: _openBookings,
           ),
           const SizedBox(height: 16),
-          
-          
-          
-          // Home Clinic Card
+          */
+
+          // Home Clinic Card (disabled - coming soon)
           _buildCard(
             title: "العيادة المنزلية",
-            subtitle: "خدمات طبية منزلية",
-            icon: Icons.local_hospital,
+            subtitle: "قريباً",
+            icon: Icons.home,
             color: Colors.orange,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const HomeClinicScreen(),
-                ),
-              );
-            },
+            onTap: () {},
+            disabled: true,
           ),
         ],
       ),
@@ -1067,11 +1630,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.search_off,
-              size: 64,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
               'لم يتم العثور على نتائج',
@@ -1084,10 +1643,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             const SizedBox(height: 8),
             Text(
               'جرب البحث بكلمات مختلفة',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[500],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
           ],
         ),
@@ -1106,10 +1662,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   Widget _buildSearchResultItem(Map<String, dynamic> result) {
     final type = result['type'] as String;
     final name = result['name'] as String;
-    
+
     String specialty = '';
     String center = '';
-    
+
     if (type == 'doctor') {
       specialty = result['specialization'] ?? 'غير محدد';
       center = result['centerName'] ?? 'غير محدد';
@@ -1132,7 +1688,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           print('specializationId: ${result['specializationId']}');
           print('doctorId: ${result['id']}');
           print('==================');
-          
+
           // التأكد من وجود workingSchedule
           Map<String, dynamic> schedule = result['workingSchedule'] ?? {};
           if (schedule.isEmpty) {
@@ -1145,21 +1701,22 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             );
             return;
           }
-          
+
           // التنقل لصفحة الحجز الأصلية مع بيانات الطبيب
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => BookingScreen(
-                name: result['name'],
-                workingSchedule: schedule,
-                facilityId: result['facilityId'] ?? '',
-                specializationId: result['specializationId'] ?? '',
-                doctorId: result['id'],
-                showDoctorInfo: true, // عرض معلومات الطبيب
-                doctorSpecialty: result['specialization'] ?? '',
-                centerName: result['centerName'] ?? '',
-              ),
+              builder:
+                  (context) => BookingScreen(
+                    name: result['name'],
+                    workingSchedule: schedule,
+                    facilityId: result['facilityId'] ?? '',
+                    specializationId: result['specializationId'] ?? '',
+                    doctorId: result['id'],
+                    showDoctorInfo: true, // عرض معلومات الطبيب
+                    doctorSpecialty: result['specialization'] ?? '',
+                    centerName: result['centerName'] ?? '',
+                  ),
             ),
           );
         } else {
@@ -1206,7 +1763,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                 ),
               ),
               const SizedBox(width: 16),
-              
+
               // Text Content
               Expanded(
                 child: Column(
@@ -1222,29 +1779,23 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    
+
                     // Specialty
                     Text(
                       'التخصص : $specialty',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                     const SizedBox(height: 2),
-                    
+
                     // Center
                     Text(
                       'المركز : $center',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
                   ],
                 ),
               ),
-              
+
               // Arrow Icon
               Icon(
                 Icons.arrow_forward_ios,
@@ -1264,16 +1815,17 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
+    bool disabled = false,
   }) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: disabled ? null : onTap,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Colors.white.withOpacity(disabled ? 0.6 : 1),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.2),
+              color: Colors.grey.withOpacity(disabled ? 0.1 : 0.2),
               spreadRadius: 2,
               blurRadius: 10,
               offset: const Offset(0, 4),
@@ -1287,13 +1839,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
+                  color: color.withOpacity(disabled ? 0.06 : 0.1),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
                   icon,
                   size: 32,
-                  color: color,
+                  color: disabled ? color.withOpacity(0.5) : color,
                 ),
               ),
               const SizedBox(width: 16),
@@ -1306,7 +1858,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+                        color: disabled ? Colors.black54 : Colors.black87,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -1314,7 +1866,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       subtitle,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey[600],
+                        color: disabled ? Colors.grey[500] : Colors.grey[600],
                       ),
                     ),
                   ],
@@ -1322,7 +1874,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               ),
               Icon(
                 Icons.arrow_forward_ios,
-                color: color,
+                color: disabled ? color.withOpacity(0.5) : color,
                 size: 20,
               ),
             ],
@@ -1338,10 +1890,17 @@ class DoctorBookingLoaderTemp extends StatefulWidget {
   final String? facilityId;
   final String? specializationId;
   final String? centralDoctorId;
-  const DoctorBookingLoaderTemp({super.key, required this.name, this.facilityId, this.specializationId, this.centralDoctorId});
+  const DoctorBookingLoaderTemp({
+    super.key,
+    required this.name,
+    this.facilityId,
+    this.specializationId,
+    this.centralDoctorId,
+  });
 
   @override
-  State<DoctorBookingLoaderTemp> createState() => _DoctorBookingLoaderTempState();
+  State<DoctorBookingLoaderTemp> createState() =>
+      _DoctorBookingLoaderTempState();
 }
 
 class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
@@ -1352,9 +1911,27 @@ class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
   }
 
   String _normalizeName(String s) {
-    final map = {'أ':'ا','إ':'ا','آ':'ا','ة':'ه','ى':'ي','ئ':'ي','ؤ':'و','ـ':'','ً':'','ٌ':'','ٍ':'','َ':'','ُ':'','ِ':'','ّ':''};
+    final map = {
+      'أ': 'ا',
+      'إ': 'ا',
+      'آ': 'ا',
+      'ة': 'ه',
+      'ى': 'ي',
+      'ئ': 'ي',
+      'ؤ': 'و',
+      'ـ': '',
+      'ً': '',
+      'ٌ': '',
+      'ٍ': '',
+      'َ': '',
+      'ُ': '',
+      'ِ': '',
+      'ّ': '',
+    };
     String out = s.trim();
-    map.forEach((k,v){ out = out.replaceAll(k,v); });
+    map.forEach((k, v) {
+      out = out.replaceAll(k, v);
+    });
     out = out.replaceAll(RegExp(r"[^\u0600-\u06FFa-zA-Z0-9 ]"), '');
     out = out.replaceAll(RegExp(r"\s+"), ' ');
     return out.toLowerCase();
@@ -1368,42 +1945,53 @@ class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
       base.startsWith('د') ? base : 'د.$base',
       base.replaceAll('د. ', 'د.').replaceAll('  ', ' '),
     };
-    final target = _normalizeName(base.startsWith('د') ? base.substring(1) : base);
+    final target = _normalizeName(
+      base.startsWith('د') ? base.substring(1) : base,
+    );
 
     try {
       // 0) Try same logic as search bar using CentralDataService
       try {
-        final results = await CentralDataService.searchDoctorsAndSpecialties(base);
+        final results = await CentralDataService.searchDoctorsAndSpecialties(
+          base,
+        );
         Map<String, dynamic>? match;
         for (final r in results) {
-          if ((r['type'] == 'doctor') && _normalizeName(r['name'] ?? '') == target) {
-            match = r; break;
+          if ((r['type'] == 'doctor') &&
+              _normalizeName(r['name'] ?? '') == target) {
+            match = r;
+            break;
           }
         }
         match ??= results.cast<Map<String, dynamic>?>().firstWhere(
-          (r) => (r?['type'] == 'doctor') && _normalizeName(r?['name'] ?? '').contains(target),
+          (r) =>
+              (r?['type'] == 'doctor') &&
+              _normalizeName(r?['name'] ?? '').contains(target),
           orElse: () => null,
         );
         if (match != null && match.isNotEmpty) {
-          final schedule = match['workingSchedule'] as Map<String, dynamic>? ?? {};
+          final schedule =
+              match['workingSchedule'] as Map<String, dynamic>? ?? {};
           if (schedule.isNotEmpty && mounted) {
             final facilityId = (match['facilityId'] ?? '').toString();
-            final specializationId = (match['specializationId'] ?? '').toString();
+            final specializationId =
+                (match['specializationId'] ?? '').toString();
             final doctorId = (match['id'] ?? '').toString();
             final centerName = (match['centerName'] ?? '').toString();
             final specName = (match['specialization'] ?? '').toString();
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(
-                builder: (_) => BookingScreen(
-                  name: (match?['name'] ?? base).toString(),
-                  workingSchedule: schedule,
-                  facilityId: facilityId,
-                  specializationId: specializationId,
-                  doctorId: doctorId,
-                  showDoctorInfo: true,
-                  doctorSpecialty: specName,
-                  centerName: centerName,
-                ),
+                builder:
+                    (_) => BookingScreen(
+                      name: (match?['name'] ?? base).toString(),
+                      workingSchedule: schedule,
+                      facilityId: facilityId,
+                      specializationId: specializationId,
+                      doctorId: doctorId,
+                      showDoctorInfo: true,
+                      doctorSpecialty: specName,
+                      centerName: centerName,
+                    ),
               ),
             );
             return;
@@ -1415,39 +2003,50 @@ class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
       // Prefer narrow search in provided path
       if ((widget.facilityId ?? '').isNotEmpty) {
         if ((widget.specializationId ?? '').isNotEmpty) {
-          final docs = await FirebaseFirestore.instance
-              .collection('medicalFacilities')
-              .doc(widget.facilityId)
-              .collection('specializations')
-              .doc(widget.specializationId)
-              .collection('doctors')
-              .get();
+          final docs =
+              await FirebaseFirestore.instance
+                  .collection('medicalFacilities')
+                  .doc(widget.facilityId)
+                  .collection('specializations')
+                  .doc(widget.specializationId)
+                  .collection('doctors')
+                  .get();
           for (final d in docs.docs) {
             final data = d.data() as Map<String, dynamic>;
             final n = (data['docName'] ?? '').toString();
             final centralId = (data['centralDoctorId'] ?? '').toString();
-            if (_normalizeName(n) == target || (widget.centralDoctorId ?? '') == centralId) { hit = d; break; }
+            if (_normalizeName(n) == target ||
+                (widget.centralDoctorId ?? '') == centralId) {
+              hit = d;
+              break;
+            }
           }
         } else {
           // Iterate all specializations under the facility
-          final specs = await FirebaseFirestore.instance
-              .collection('medicalFacilities')
-              .doc(widget.facilityId)
-              .collection('specializations')
-              .get();
+          final specs =
+              await FirebaseFirestore.instance
+                  .collection('medicalFacilities')
+                  .doc(widget.facilityId)
+                  .collection('specializations')
+                  .get();
           for (final s in specs.docs) {
-            final docs = await FirebaseFirestore.instance
-                .collection('medicalFacilities')
-                .doc(widget.facilityId)
-                .collection('specializations')
-                .doc(s.id)
-                .collection('doctors')
-                .get();
+            final docs =
+                await FirebaseFirestore.instance
+                    .collection('medicalFacilities')
+                    .doc(widget.facilityId)
+                    .collection('specializations')
+                    .doc(s.id)
+                    .collection('doctors')
+                    .get();
             for (final d in docs.docs) {
               final data = d.data() as Map<String, dynamic>;
               final n = (data['docName'] ?? '').toString();
               final centralId = (data['centralDoctorId'] ?? '').toString();
-              if (_normalizeName(n) == target || (widget.centralDoctorId ?? '') == centralId) { hit = d; break; }
+              if (_normalizeName(n) == target ||
+                  (widget.centralDoctorId ?? '') == centralId) {
+                hit = d;
+                break;
+              }
             }
             if (hit != null) break;
           }
@@ -1456,32 +2055,43 @@ class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
 
       // If still not found and we have centralDoctorId, search by it
       if (hit == null && (widget.centralDoctorId ?? '').isNotEmpty) {
-        final cgCentral = await FirebaseFirestore.instance
-            .collectionGroup('doctors')
-            .where('centralDoctorId', isEqualTo: widget.centralDoctorId)
-            .limit(1)
-            .get();
+        final cgCentral =
+            await FirebaseFirestore.instance
+                .collectionGroup('doctors')
+                .where('centralDoctorId', isEqualTo: widget.centralDoctorId)
+                .limit(1)
+                .get();
         if (cgCentral.docs.isNotEmpty) hit = cgCentral.docs.first;
       }
       // Try exact candidates
       for (final c in candidates) {
-        final cgTry = await FirebaseFirestore.instance
-            .collectionGroup('doctors')
-            .where('docName', isEqualTo: c)
-            .limit(1)
-            .get();
-        if (cgTry.docs.isNotEmpty) { hit = cgTry.docs.first; break; }
+        final cgTry =
+            await FirebaseFirestore.instance
+                .collectionGroup('doctors')
+                .where('docName', isEqualTo: c)
+                .limit(1)
+                .get();
+        if (cgTry.docs.isNotEmpty) {
+          hit = cgTry.docs.first;
+          break;
+        }
       }
       // Fallback: normalize compare (scan bigger window)
       if (hit == null) {
-        final cg2 = await FirebaseFirestore.instance
-            .collectionGroup('doctors')
-            .limit(2000)
-            .get();
+        final cg2 =
+            await FirebaseFirestore.instance
+                .collectionGroup('doctors')
+                .limit(2000)
+                .get();
         for (final d in cg2.docs) {
           final n = (d.data()['docName'] ?? '').toString();
           final norm = _normalizeName(n);
-          if (norm == target || norm.contains(target) || target.contains(norm)) { hit = d; break; }
+          if (norm == target ||
+              norm.contains(target) ||
+              target.contains(norm)) {
+            hit = d;
+            break;
+          }
         }
       }
 
@@ -1491,7 +2101,10 @@ class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
         if (schedule.isEmpty) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('لا يوجد جدول عمل للطبيب'), backgroundColor: Colors.red),
+              const SnackBar(
+                content: Text('لا يوجد جدول عمل للطبيب'),
+                backgroundColor: Colors.red,
+              ),
             );
           }
           Navigator.of(context).pop();
@@ -1499,27 +2112,36 @@ class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
         }
 
         // Derive facility and specialization from path
-        final doctorRef = hit.reference; // .../specializations/{specId}/doctors/{docId}
+        final doctorRef =
+            hit.reference; // .../specializations/{specId}/doctors/{docId}
         final specRef = doctorRef.parent.parent!; // specializations/{specId}
         final facilityRef = specRef.parent.parent!; // root/{facilityId}
         final specSnap = await specRef.get();
         final facilitySnap = await facilityRef.get();
-        final specName = (specSnap.data() as Map<String, dynamic>?)?['specName']?.toString() ?? '';
-        final centerName = (facilitySnap.data() as Map<String, dynamic>?)?['name']?.toString() ?? '';
+        final specName =
+            (specSnap.data() as Map<String, dynamic>?)?['specName']
+                ?.toString() ??
+            '';
+        final centerName =
+            (facilitySnap.data() as Map<String, dynamic>?)?['name']
+                ?.toString() ??
+            '';
 
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (_) => BookingScreen(
-              name: (data['docName'] ?? base).toString(),
-              workingSchedule: schedule,
-              facilityId: facilityRef.id,
-              specializationId: specRef.id,
-              doctorId: doctorRef.id,
-              showDoctorInfo: true,
-              doctorSpecialty: specName, // pass specialization name instead of id
-              centerName: centerName,
-            ),
+            builder:
+                (_) => BookingScreen(
+                  name: (data['docName'] ?? base).toString(),
+                  workingSchedule: schedule,
+                  facilityId: facilityRef.id,
+                  specializationId: specRef.id,
+                  doctorId: doctorRef.id,
+                  showDoctorInfo: true,
+                  doctorSpecialty:
+                      specName, // pass specialization name instead of id
+                  centerName: centerName,
+                ),
           ),
         );
         return;
@@ -1528,7 +2150,10 @@ class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('لم يتم العثور على الطبيب: ${widget.name}'), backgroundColor: Colors.red),
+      SnackBar(
+        content: Text('لم يتم العثور على الطبيب: ${widget.name}'),
+        backgroundColor: Colors.red,
+      ),
     );
     Navigator.of(context).pop();
   }
@@ -1537,7 +2162,9 @@ class _DoctorBookingLoaderTempState extends State<DoctorBookingLoaderTemp> {
   Widget build(BuildContext context) {
     return const Scaffold(
       body: Center(
-        child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2FBDAF))),
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2FBDAF)),
+        ),
       ),
     );
   }

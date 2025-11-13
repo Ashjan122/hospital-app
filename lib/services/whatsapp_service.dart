@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:hospital_app/services/sms_service.dart';
 
 class WhatsAppService {
-  static const String _baseUrl = 'https://api.ultramsg.com/instance140877/messages/chat';
-  static const String _token = 'df2r46jz82otkegg';
+  static const String _baseUrl = 'https://api.ultramsg.com/instance145504/messages/chat';
+  static const String _token = 'mh3flw9ka6wm8dkw';
 
   // Generate OTP code
   static String generateOTP() {

@@ -220,15 +220,15 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: ListTile(
-                          leading: Icon(
-                            Icons.medical_services,
-                            color: Color(0xFF2FBDAF),
-                          ),
-                          title: Text(
-                            specName,
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          title: Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              specName,
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                           trailing: Icon(Icons.arrow_forward_ios, size: 16),

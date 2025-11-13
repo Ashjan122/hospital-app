@@ -9,6 +9,7 @@ import 'package:hospital_app/models/country.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -24,10 +25,13 @@ class _LoginScreenState extends State<LoginScreen> {
   String _verificationMethod = 'sms';
   Country _selectedCountry = Country.countries.first;
   List<String> _supportPhones = [];
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
+    _loadAppVersion();
+
     _checkLoginStatus();
     _loadSupportPhonesOnce();
   }
@@ -38,6 +42,17 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      setState(() {
+        _appVersion = info.version; // يقرأ "1.0.0" من pubspec.yaml
+      });
+    } catch (e) {
+      print('خطأ في قراءة رقم الإصدار: $e');
+    }
+  }
+
   Future<void> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
     final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
@@ -45,16 +60,12 @@ class _LoginScreenState extends State<LoginScreen> {
     final userEmail = prefs.getString('userEmail');
 
     if (isLoggedIn && userType == 'patient' && userEmail != null) {
-        // Patient is logged in
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const PatientHomeScreen(),
-          ),
-        );
+      // Patient is logged in
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+      );
     }
   }
-
-
 
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
@@ -64,25 +75,28 @@ class _LoginScreenState extends State<LoginScreen> {
 
       try {
         String phoneInput = _phoneController.text.trim();
-        
+
         // Check if input looks like a phone number
         bool isPhoneNumber = RegExp(r'^[0-9+\-\s()]+$').hasMatch(phoneInput);
-        
+
         if (isPhoneNumber) {
           // Try multiple phone number formats
-          List<String> possibleNumbers = _generatePossiblePhoneNumbers(phoneInput);
-          
+          List<String> possibleNumbers = _generatePossiblePhoneNumbers(
+            phoneInput,
+          );
+
           bool found = false;
           String? foundPhoneNumber;
           DocumentSnapshot? foundPatient;
-          
+
           // Search for each possible format
           for (String phoneNumber in possibleNumbers) {
-            final patientsQuery = await FirebaseFirestore.instance
-                .collection('patients')
-                .where('phone', isEqualTo: phoneNumber)
-                .get();
-            
+            final patientsQuery =
+                await FirebaseFirestore.instance
+                    .collection('patients')
+                    .where('phone', isEqualTo: phoneNumber)
+                    .get();
+
             if (patientsQuery.docs.isNotEmpty) {
               found = true;
               foundPhoneNumber = phoneNumber;
@@ -90,7 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
               break;
             }
           }
-          
+
           if (found && foundPatient != null) {
             final patientData = foundPatient.data() as Map<String, dynamic>;
             final patientName = patientData['name'] ?? 'مريض عزيز';
@@ -105,28 +119,34 @@ class _LoginScreenState extends State<LoginScreen> {
               result = await SMSService.sendOTP(normalizedPhone, otp);
             }
 
-            setState(() { _isLoading = false; });
+            setState(() {
+              _isLoading = false;
+            });
 
             if (result['success']) {
               if (mounted) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (context) => OTPVerificationScreen(
-                      phoneNumber: normalizedPhone,
-                      name: patientName,
-                      password: '',
-                      initialOtp: otp,
-                      initialOtpCreatedAt: DateTime.now(),
-                      country: _selectedCountry,
-                      verificationMethod: _verificationMethod,
-                      isLoginFlow: true,
-                    ),
+                    builder:
+                        (context) => OTPVerificationScreen(
+                          phoneNumber: normalizedPhone,
+                          name: patientName,
+                          password: '',
+                          initialOtp: otp,
+                          initialOtpCreatedAt: DateTime.now(),
+                          country: _selectedCountry,
+                          verificationMethod: _verificationMethod,
+                          isLoginFlow: true,
+                        ),
                   ),
                 );
               }
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('فشل إرسال رمز التحقق: ${result['message']}'), backgroundColor: Colors.red),
+                SnackBar(
+                  content: Text('فشل إرسال رمز التحقق: ${result['message']}'),
+                  backgroundColor: Colors.red,
+                ),
               );
             }
           } else {
@@ -158,10 +178,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('حدث خطأ: $e'),
-              backgroundColor: Colors.red,
-            ),
+            SnackBar(content: Text('حدث خطأ: $e'), backgroundColor: Colors.red),
           );
         }
       }
@@ -172,24 +189,24 @@ class _LoginScreenState extends State<LoginScreen> {
   List<String> _generatePossiblePhoneNumbers(String phoneInput) {
     List<String> possibleNumbers = [];
     String digitsOnly = phoneInput.replaceAll(RegExp(r'[^0-9]'), '');
-    
+
     // Add the original input as is
     possibleNumbers.add(digitsOnly);
-    
+
     // Try different country codes
     for (Country country in Country.countries) {
       String countryCode = country.dialCode.replaceAll('+', '');
-      
+
       // If number already has country code, add as is
       if (digitsOnly.startsWith(countryCode)) {
         possibleNumbers.add(digitsOnly);
         continue;
       }
-      
+
       // Try adding country code
       String withCountryCode = countryCode + digitsOnly;
       possibleNumbers.add(withCountryCode);
-      
+
       // If number starts with 0, try removing it and adding country code
       if (digitsOnly.startsWith('0')) {
         String withoutLeadingZero = digitsOnly.substring(1);
@@ -197,17 +214,15 @@ class _LoginScreenState extends State<LoginScreen> {
         possibleNumbers.add(withCountryCodeNoZero);
       }
     }
-    
+
     // Remove duplicates
     return possibleNumbers.toSet().toList();
   }
 
-
-
   void _registerWithUsername() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const RegisterScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const RegisterScreen()));
   }
 
   Future<void> _loadSupportPhonesOnce() async {
@@ -219,10 +234,12 @@ class _LoginScreenState extends State<LoginScreen> {
           .timeout(const Duration(seconds: 3));
       if (doc.exists) {
         final data = doc.data();
-        final numbers = (data?['numbers'] as List?)
-            ?.map((e) => (e ?? '').toString().trim())
-            .where((s) => s.isNotEmpty)
-            .toList() ?? [];
+        final numbers =
+            (data?['numbers'] as List?)
+                ?.map((e) => (e ?? '').toString().trim())
+                .where((s) => s.isNotEmpty)
+                .toList() ??
+            [];
         if (mounted) {
           setState(() {
             _supportPhones = numbers;
@@ -260,17 +277,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // Description
                 Text(
                   "يرجى الاتصال على الأرقام التالية:",
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.black87,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.black87),
                 ),
                 const SizedBox(height: 12),
-                
+
                 // Phone Numbers (from Firestore)
                 if (_supportPhones.isEmpty)
                   Padding(
@@ -281,8 +295,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   )
                 else
-                  ...List.generate(_supportPhones.length, (i) => 
-                    Padding(
+                  ...List.generate(
+                    _supportPhones.length,
+                    (i) => Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: GestureDetector(
                         onTap: () => _makePhoneCall(_supportPhones[i]),
@@ -393,7 +408,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         const SizedBox(height: 24),
-                        
+
                         // Title
                         const Text(
                           'تسجيل الدخول',
@@ -420,7 +435,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           decoration: InputDecoration(
                             labelText: "رقم الهاتف",
                             hintText: "أدخل رقم الهاتف",
-                            prefixIcon: const Icon(Icons.phone, color: Color(0xFF2FBDAF)),
+                            prefixIcon: const Icon(
+                              Icons.phone,
+                              color: Color(0xFF2FBDAF),
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -446,13 +464,25 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             Expanded(
                               child: GestureDetector(
-                                onTap: () => setState(() => _verificationMethod = 'sms'),
+                                onTap:
+                                    () => setState(
+                                      () => _verificationMethod = 'sms',
+                                    ),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 16,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: _verificationMethod == 'sms' ? const Color(0xFFE0F2F1) : Colors.white,
+                                    color:
+                                        _verificationMethod == 'sms'
+                                            ? const Color(0xFFE0F2F1)
+                                            : Colors.white,
                                     border: Border.all(
-                                      color: _verificationMethod == 'sms' ? const Color(0xFF2FBDAF) : Colors.grey[300]!,
+                                      color:
+                                          _verificationMethod == 'sms'
+                                              ? const Color(0xFF2FBDAF)
+                                              : Colors.grey[300]!,
                                       width: 1.5,
                                     ),
                                     borderRadius: BorderRadius.circular(10),
@@ -460,12 +490,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      if (_verificationMethod == 'sms') const Icon(Icons.check, color: Color(0xFF2FBDAF), size: 16),
-                                      if (_verificationMethod == 'sms') const SizedBox(width: 6),
+                                      if (_verificationMethod == 'sms')
+                                        const Icon(
+                                          Icons.check,
+                                          color: Color(0xFF2FBDAF),
+                                          size: 16,
+                                        ),
+                                      if (_verificationMethod == 'sms')
+                                        const SizedBox(width: 6),
                                       Text(
                                         'رسالة نصية',
                                         style: TextStyle(
-                                          color: _verificationMethod == 'sms' ? Colors.black87 : Colors.grey[600],
+                                          color:
+                                              _verificationMethod == 'sms'
+                                                  ? Colors.black87
+                                                  : Colors.grey[600],
                                           fontWeight: FontWeight.w500,
                                           fontSize: 13,
                                         ),
@@ -478,13 +517,25 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: GestureDetector(
-                                onTap: () => setState(() => _verificationMethod = 'whatsapp'),
+                                onTap:
+                                    () => setState(
+                                      () => _verificationMethod = 'whatsapp',
+                                    ),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 16,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: _verificationMethod == 'whatsapp' ? const Color(0xFFE0F2F1) : Colors.white,
+                                    color:
+                                        _verificationMethod == 'whatsapp'
+                                            ? const Color(0xFFE0F2F1)
+                                            : Colors.white,
                                     border: Border.all(
-                                      color: _verificationMethod == 'whatsapp' ? const Color(0xFF2FBDAF) : Colors.grey[300]!,
+                                      color:
+                                          _verificationMethod == 'whatsapp'
+                                              ? const Color(0xFF2FBDAF)
+                                              : Colors.grey[300]!,
                                       width: 1.5,
                                     ),
                                     borderRadius: BorderRadius.circular(10),
@@ -492,12 +543,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      if (_verificationMethod == 'whatsapp') const Icon(Icons.check, color: Color(0xFF2FBDAF), size: 16),
-                                      if (_verificationMethod == 'whatsapp') const SizedBox(width: 6),
+                                      if (_verificationMethod == 'whatsapp')
+                                        const Icon(
+                                          Icons.check,
+                                          color: Color(0xFF2FBDAF),
+                                          size: 16,
+                                        ),
+                                      if (_verificationMethod == 'whatsapp')
+                                        const SizedBox(width: 6),
                                       Text(
                                         'واتساب',
                                         style: TextStyle(
-                                          color: _verificationMethod == 'whatsapp' ? Colors.black87 : Colors.grey[600],
+                                          color:
+                                              _verificationMethod == 'whatsapp'
+                                                  ? Colors.black87
+                                                  : Colors.grey[600],
                                           fontWeight: FontWeight.w500,
                                           fontSize: 13,
                                         ),
@@ -524,24 +584,26 @@ class _LoginScreenState extends State<LoginScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
+                            child:
+                                _isLoading
+                                    ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    )
+                                    : const Text(
+                                      'تسجيل الدخول',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                  )
-                                : const Text(
-                                    'تسجيل الدخول',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -608,11 +670,20 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                   ],
                                 ),
+                                if (_appVersion.isNotEmpty) ...[
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    "رقم الإصدار : $_appVersion",
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
                         ),
-
                       ],
                     ),
                   ),
