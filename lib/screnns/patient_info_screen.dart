@@ -471,6 +471,28 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         });
     
     final bookingId = bookingDocRef.id;
+    // إضافة نسخة من الحجز داخل المركز
+await FirebaseFirestore.instance
+    .collection('medicalFacilities')
+    .doc(widget.facilityId)
+    .collection('appointments')
+    .doc(bookingId)
+    .set({
+      'patientName': patientName,
+      'patientPhone': patientPhone,
+      'patientId': patientId,
+      'facilityId': widget.facilityId,
+      'centralSpecialtyId': widget.specializationId,
+      'doctorId': widget.doctorId,
+      'doctorName': doctorName ?? 'طبيب',
+      'specializationName': specializationName ?? 'تخصص طبي',
+      'date': dateStr,
+      'time': availableTime,
+      'period': period,
+      'createdAt': FieldValue.serverTimestamp(),
+      'isConfirmed': false,
+});
+
 
     if (!mounted) return;
 

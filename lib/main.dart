@@ -99,28 +99,25 @@ class HospitalApp extends StatelessWidget {
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
+                body: Center(child: CircularProgressIndicator()),
               );
             }
-            
+
             if (snapshot.hasData) {
               final prefs = snapshot.data!;
               final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
               final userType = prefs.getString('userType');
-              final hasRegisteredOnce = prefs.getBool('hasRegisteredOnce') ?? false;
 
               if (isLoggedIn && userType == 'patient') {
+                // المستخدم مسجل دخول → الشاشة الرئيسية
                 return const PatientHomeScreen();
               }
-              if (hasRegisteredOnce) {
-                return const LoginScreen();
-              }
-              return const RegisterScreen();
+
+              // المستخدم غير مسجل دخول → شاشة تسجيل الدخول دائمًا
+              return const LoginScreen();
             }
-            
-            // في حالة الخطأ، نعرض شاشة تسجيل الدخول
+
+            // في حالة أي خطأ، نعرض شاشة تسجيل الدخول
             return const LoginScreen();
           },
         ),

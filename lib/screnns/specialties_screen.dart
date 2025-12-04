@@ -194,46 +194,103 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                   final specName = data['specName'] ?? 'تخصص غير معروف';
                   final specId = doc.id;
 
-                  return InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => DoctorsScreen(
-                            facilityId: widget.facilityId,
-                            specId: specId,
-                            specializationName: specName,
-                          ),
-                        ),
-                      );
-                    },
-                    child: SizedBox(
-                      width: 300,
-                      height: 100,
-                      child: Card(
-                        elevation: 6,
-                        margin: EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 10,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                          title: Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              specName,
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
+                  return Card(
+                    elevation: 6,
+                    margin: EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 10,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('medicalFacilities')
+                          .doc(widget.facilityId)
+                          .collection('specializations')
+                          .doc(specId)
+                          .collection('subSpecialties')
+                          .snapshots(),
+                      builder: (context, subSnapshot) {
+                        final subSpecialties = subSnapshot.data?.docs ?? [];
+                        final hasSubSpecialties = subSpecialties.isNotEmpty;
+
+                        if (hasSubSpecialties) {
+                          // إذا كان هناك تخصصات فرعية، استخدم ExpansionTile
+                          return ExpansionTile(
+                            title: Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                specName,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                          ),
-                          trailing: Icon(Icons.arrow_forward_ios, size: 16),
-                        ),
-                      ),
+                            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                            children: [
+                              ...subSpecialties.map((subDoc) {
+                                final subData = subDoc.data() as Map<String, dynamic>;
+                                final subName = subData['name'] ?? 'تخصص فرعي غير معروف';
+                                final subId = subDoc.id;
+                                
+                                return InkWell(
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => DoctorsScreen(
+                                          facilityId: widget.facilityId,
+                                          specId: specId, // استخدام التخصص الرئيسي
+                                          specializationName: subName,
+                                          subSpecialtyId: subId, // التخصص الفرعي
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: ListTile(
+                                    dense: true,
+                                    leading: const Icon(Icons.arrow_left, size: 16),
+                                    title: Text(subName),
+                                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                                  ),
+                                );
+                              }).toList(),
+                            ],
+                          );
+                        } else {
+                          // إذا لم يكن هناك تخصصات فرعية، استخدم InkWell مباشرة
+                          return InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => DoctorsScreen(
+                                    facilityId: widget.facilityId,
+                                    specId: specId,
+                                    specializationName: specName,
+                                    subSpecialtyId: null,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                              title: Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  specName,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                  ),
+                                ),
+                              ),
+                              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                            ),
+                          );
+                        }
+                      },
                     ),
                   );
                 },
@@ -244,6 +301,7 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
       ),
     );
   }
+
 
   @override
   void dispose() {

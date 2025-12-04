@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:hospital_app/services/sms_service.dart';
 
 class WhatsAppService {
-  static const String _baseUrl = 'https://api.ultramsg.com/instance145504/messages/chat';
-  static const String _token = 'mh3flw9ka6wm8dkw';
+  static const String _baseUrl = 'https://api.ultramsg.com/instance140372/messages/chat';
+  static const String _token = 'wjav78swzp7u87uk';
 
   // Generate OTP code
   static String generateOTP() {
@@ -24,7 +24,12 @@ class WhatsAppService {
       print('📞 رقم الهاتف المنسق: $formattedPhone');
       
       // Prepare WhatsApp message
-      String message = 'رمز التحقق الخاص بك هو:\n$otp\n\nصالح لمدة 5 دقائق.';
+      String message = 
+    'رمز التحقق الخاص بك هو:\n\n'
+    '```$otp```\n\n'
+    
+    'صالح لمدة 5 دقائق.';
+
       print('💬 نص الرسالة: $message');
       
       print('📡 إرسال طلب HTTP إلى واتساب...');

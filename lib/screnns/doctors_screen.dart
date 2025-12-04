@@ -7,12 +7,14 @@ class DoctorsScreen extends StatefulWidget {
   final String facilityId;
   final String specId;
   final String specializationName;
+  final String? subSpecialtyId;
 
   const DoctorsScreen({
     super.key,
     required this.facilityId,
     required this.specId,
     required this.specializationName,
+    required this.subSpecialtyId,
   });
 
   @override
@@ -63,8 +65,14 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
       final data = doctor.data() as Map<String, dynamic>;
       final isActive = data['isActive'];
       // فقط الأطباء الذين لديهم isActive = true صراحة
+       // إذا كان هناك تخصص فرعي محدد، فلتر الأطباء حسب التخصص الفرعي
+      if (widget.subSpecialtyId != null) {
+        final doctorSubSpecialty = data['subSpecialization']?.toString();
+        return doctorSubSpecialty == widget.subSpecialtyId;
+      }
       return isActive == true;
     }).toList();
+    
     
     // ترتيب الأطباء حسب أقرب يوم عمل قادم: غداً أولاً ثم بعد غد وهكذا
     final listToSort = List<QueryDocumentSnapshot>.from(activeDoctors);

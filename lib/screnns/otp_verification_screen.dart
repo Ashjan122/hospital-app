@@ -63,7 +63,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     _currentOtpCreatedAt = widget.initialOtpCreatedAt;
     _startTimer();
     _initOtpAutoFill();
-    _startClipboardListener();
+    
   }
 
   @override
@@ -97,23 +97,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     }
   }
 
-  void _startClipboardListener() {
-    // Fallback for WhatsApp: poll clipboard briefly to detect OTP copied
-    _clipboardTimer = Timer.periodic(const Duration(seconds: 2), (t) async {
-      try {
-        final data = await Clipboard.getData('text/plain');
-        final text = data?.text ?? '';
-        if (text.isNotEmpty) {
-          final match = RegExp(r'\b(\d{6})\b').firstMatch(text);
-          if (match != null) {
-            _fillOtp(match.group(1)!);
-            t.cancel();
-          }
-        }
-      } catch (_) {}
-    });
-  }
-
+  
   void _fillOtp(String code) {
     if (code.length < 4) return;
     final six = code.length >= 6 ? code.substring(0, 6) : code.padRight(6, '0');
@@ -424,6 +408,38 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   void _onOTPChanged(String value, int index) {
+    // إذا كان النص المنسوخ أطول من حرف واحد، قم بتوزيعه على جميع المربعات
+    if (value.length > 1) {
+      // استخراج الأرقام فقط من النص المنسوخ
+      String digitsOnly = value.replaceAll(RegExp(r'[^0-9]'), '');
+      
+      if (digitsOnly.length >= 6) {
+        // توزيع الرمز على جميع المربعات
+        for (int i = 0; i < 6; i++) {
+          if (i < digitsOnly.length) {
+            _otpControllers[i].text = digitsOnly[i];
+          }
+        }
+        // نقل التركيز إلى آخر مربع
+        _focusNodes[5].requestFocus();
+        // التحقق من الرمز تلقائياً
+        Future.delayed(const Duration(milliseconds: 100), () {
+          _verifyOTP();
+        });
+        return;
+      } else if (digitsOnly.isNotEmpty) {
+        // إذا كان الرمز أقل من 6 أرقام، املأ من المربع الحالي
+        for (int i = 0; i < digitsOnly.length && (index + i) < 6; i++) {
+          _otpControllers[index + i].text = digitsOnly[i];
+        }
+        // نقل التركيز إلى المربع التالي
+        int nextIndex = (index + digitsOnly.length).clamp(0, 5);
+        _focusNodes[nextIndex].requestFocus();
+        return;
+      }
+    }
+
+    // السلوك العادي: حرف واحد فقط
     if (value.length == 1 && index < 5) {
       _focusNodes[index + 1].requestFocus();
     } else if (value.isEmpty && index > 0) {
@@ -534,11 +550,18 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                             focusNode: _focusNodes[index],
                             keyboardType: TextInputType.number,
                             textAlign: TextAlign.center,
-                            maxLength: 1,
+                            maxLength: 6, // السماح بلصق أكثر من حرف واحد
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
                             ],
                             onChanged: (value) => _onOTPChanged(value, index),
+                            onTap: () {
+                              // عند النقر، حدد النص الموجود للسماح بالاستبدال
+                              _otpControllers[index].selection = TextSelection(
+                                baseOffset: 0,
+                                extentOffset: _otpControllers[index].text.length,
+                              );
+                            },
                             decoration: InputDecoration(
                               counterText: '',
                               border: OutlineInputBorder(
