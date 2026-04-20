@@ -28,24 +28,28 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
   // Cache للحجوزات
   static List<Map<String, dynamic>> _bookingsCache = [];
   static DateTime? _lastCacheTime;
+  static String? _cachedPatientId;
   static const Duration _cacheExpiry = Duration(minutes: 5); // انتهاء صلاحية Cache بعد 5 دقائق
-  
+
   // فحص صحة Cache
   bool _isCacheValid() {
     if (_bookingsCache.isEmpty || _lastCacheTime == null) {
       return false;
     }
-    
+    if (_cachedPatientId != patientId) {
+      return false;
+    }
     final now = DateTime.now();
     final cacheAge = now.difference(_lastCacheTime!);
-    
+
     return cacheAge < _cacheExpiry;
   }
-  
+
   // مسح Cache
   static void clearBookingsCache() {
     _bookingsCache.clear();
     _lastCacheTime = null;
+    _cachedPatientId = null;
     print('تم مسح Cache الحجوزات');
   }
 
@@ -79,18 +83,11 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
 
   Future<void> _fetchBookings() async {
     if (patientId == null) {
-      print('❌ معرف المريض غير موجود');
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
       return;
     }
 
-    print('🔍 بدء تحميل الحجوزات للمريض: $patientId');
-
-    // فحص Cache أولاً
     if (_isCacheValid()) {
-      print('✅ استخدام Cache للحجوزات - تحميل فوري');
       setState(() {
         _bookings = List.from(_bookingsCache);
         _isLoading = false;
@@ -99,188 +96,75 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
     }
 
     try {
-      setState(() {
-        _isLoading = true;
-      });
+      setState(() => _isLoading = true);
 
-      print('📡 تحميل الحجوزات من قاعدة البيانات...');
+      // استعلام واحد يجلب حجوزات المريض من كل المراكز
+      final snapshot = await FirebaseFirestore.instance
+          .collectionGroup('appointments')
+          .where('patientId', isEqualTo: patientId)
+          .get()
+          .timeout(const Duration(seconds: 10));
 
-      // محاولة البحث في مجموعة medicalFacilities أولاً
-      List<Map<String, dynamic>> allBookings = [];
-      
-      try {
-        // البحث في المرافق المتاحة
-        final facilitiesSnapshot = await FirebaseFirestore.instance
+      // جلب أسماء المراكز لكل facilityId فريد
+      final facilityIds = snapshot.docs
+          .map((doc) => doc.data()['facilityId'] as String? ?? doc.reference.parent.parent?.id ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+
+      final Map<String, String> facilityNames = {};
+      await Future.wait(facilityIds.map((id) async {
+        final facilityDoc = await FirebaseFirestore.instance
             .collection('medicalFacilities')
-            .get()
-            .timeout(const Duration(seconds: 10));
+            .doc(id)
+            .get();
+        facilityNames[id] = facilityDoc.data()?['name'] ?? 'مركز طبي';
+      }));
 
-        print('🏥 تم العثور على ${facilitiesSnapshot.docs.length} مرفق طبي');
+      // فلتر: فقط medicalFacilities/{id}/appointments/{docId} (4 أجزاء)
+      // تجاهل: medicalFacilities/{id}/specializations/{id}/doctors/{id}/appointments/{docId} (8 أجزاء)
+      final validDocs = snapshot.docs.where((doc) {
+        final segments = doc.reference.path.split('/');
+        return segments.length == 4;
+      }).toList();
 
-        List<Future<void>> futures = [];
+      final List<Map<String, dynamic>> allBookings = validDocs.map((doc) {
+        final data = doc.data();
+        final fId = data['facilityId'] as String? ?? doc.reference.parent.parent?.id ?? '';
+        return {
+          ...data,
+          'id': doc.id,
+          'facilityId': fId,
+          'facilityName': facilityNames[fId] ?? 'مركز طبي',
+          'specializationId': data['centralSpecialtyId'] ?? data['specializationId'] ?? '',
+        };
+      }).toList();
 
-        for (var facilityDoc in facilitiesSnapshot.docs) {
-          futures.add(_fetchBookingsFromFacility(facilityDoc, allBookings));
-        }
-
-        // انتظار جميع العمليات في نفس الوقت
-        await Future.wait(futures);
-        print('📋 تم جلب ${allBookings.length} حجز من medicalFacilities');
-      } catch (e) {
-        print('⚠️ خطأ في جلب الحجوزات من medicalFacilities: $e');
-      }
-
-      // إذا لم نجد حجوزات، جرب البحث في مجموعة bookings مباشرة
-      if (allBookings.isEmpty) {
-        try {
-          print('🔄 البحث في مجموعة bookings مباشرة...');
-          final bookingsSnapshot = await FirebaseFirestore.instance
-              .collection('bookings')
-              .where('patientId', isEqualTo: patientId)
-              .get()
-              .timeout(const Duration(seconds: 10));
-
-          print('📋 تم العثور على ${bookingsSnapshot.docs.length} حجز في مجموعة bookings');
-
-          for (var bookingDoc in bookingsSnapshot.docs) {
-            final bookingData = bookingDoc.data();
-            allBookings.add({
-              ...bookingData,
-              'id': bookingDoc.id,
-            });
-          }
-        } catch (e) {
-          print('⚠️ خطأ في جلب الحجوزات من مجموعة bookings: $e');
-        }
-      }
-
-      // ترتيب الحجوزات حسب التاريخ والوقت (الأحدث أولاً)
+      // ترتيب الحجوزات: الأحدث أولاً
       allBookings.sort((a, b) {
         final dateA = DateTime.tryParse(a['date'] ?? '');
         final dateB = DateTime.tryParse(b['date'] ?? '');
         if (dateA == null && dateB == null) return 0;
         if (dateA == null) return 1;
         if (dateB == null) return -1;
-        
-        // إذا كان التاريخ نفسه، قارن بالوقت
-        if (dateA.year == dateB.year && dateA.month == dateB.month && dateA.day == dateB.day) {
-          final timeA = a['time'] ?? '';
-          final timeB = b['time'] ?? '';
-          return timeB.compareTo(timeA); // الأحدث أولاً
+        if (dateA.year == dateB.year &&
+            dateA.month == dateB.month &&
+            dateA.day == dateB.day) {
+          return (b['time'] ?? '').compareTo(a['time'] ?? '');
         }
-        
-        return dateB.compareTo(dateA); // الأحدث أولاً
+        return dateB.compareTo(dateA);
       });
 
-      // حفظ في Cache
       _bookingsCache = List.from(allBookings);
       _lastCacheTime = DateTime.now();
-      print('💾 تم حفظ ${allBookings.length} حجز في Cache');
+      _cachedPatientId = patientId;
 
       setState(() {
         _bookings = allBookings;
         _isLoading = false;
       });
-
-      if (allBookings.isEmpty) {
-        print('ℹ️ لا توجد حجوزات للمريض');
-      }
     } catch (e) {
       print('❌ خطأ في تحميل الحجوزات: $e');
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _fetchBookingsFromFacility(QueryDocumentSnapshot facilityDoc, List<Map<String, dynamic>> allBookings) async {
-    try {
-      final specializationsSnapshot = await FirebaseFirestore.instance
-          .collection('medicalFacilities')
-          .doc(facilityDoc.id)
-          .collection('specializations')
-          .where('isActive', isEqualTo: true) // فقط التخصصات النشطة
-          .get()
-          .timeout(const Duration(seconds: 3));
-
-      List<Future<void>> specFutures = [];
-
-      for (var specDoc in specializationsSnapshot.docs) {
-        specFutures.add(_fetchBookingsFromSpecialization(facilityDoc, specDoc, allBookings));
-      }
-
-      await Future.wait(specFutures);
-    } catch (e) {
-      print('خطأ في تحميل الحجوزات من المرفق ${facilityDoc.id}: $e');
-    }
-  }
-
-  Future<void> _fetchBookingsFromSpecialization(
-    QueryDocumentSnapshot facilityDoc, 
-    QueryDocumentSnapshot specDoc, 
-    List<Map<String, dynamic>> allBookings
-  ) async {
-    try {
-      final doctorsSnapshot = await FirebaseFirestore.instance
-          .collection('medicalFacilities')
-          .doc(facilityDoc.id)
-          .collection('specializations')
-          .doc(specDoc.id)
-          .collection('doctors')
-          .where('isActive', isEqualTo: true) // فقط الأطباء النشطين
-          .get()
-          .timeout(const Duration(seconds: 3));
-
-      List<Future<void>> doctorFutures = [];
-
-      for (var doctorDoc in doctorsSnapshot.docs) {
-        doctorFutures.add(_fetchBookingsFromDoctor(facilityDoc, specDoc, doctorDoc, allBookings));
-      }
-
-      await Future.wait(doctorFutures);
-    } catch (e) {
-      print('خطأ في تحميل الحجوزات من التخصص ${specDoc.id}: $e');
-    }
-  }
-
-  Future<void> _fetchBookingsFromDoctor(
-    QueryDocumentSnapshot facilityDoc,
-    QueryDocumentSnapshot specDoc,
-    QueryDocumentSnapshot doctorDoc,
-    List<Map<String, dynamic>> allBookings
-  ) async {
-    try {
-      final appointmentsSnapshot = await FirebaseFirestore.instance
-          .collection('medicalFacilities')
-          .doc(facilityDoc.id)
-          .collection('specializations')
-          .doc(specDoc.id)
-          .collection('doctors')
-          .doc(doctorDoc.id)
-          .collection('appointments')
-          .where('patientId', isEqualTo: patientId)
-          .get()
-          .timeout(const Duration(seconds: 3));
-
-      for (var appointmentDoc in appointmentsSnapshot.docs) {
-        final appointmentData = appointmentDoc.data();
-        final facilityData = facilityDoc.data() as Map<String, dynamic>?;
-        final specData = specDoc.data() as Map<String, dynamic>?;
-        final doctorData = doctorDoc.data() as Map<String, dynamic>?;
-        
-        allBookings.add({
-          ...appointmentData,
-          'id': appointmentDoc.id,
-          'facilityId': facilityDoc.id,
-          'facilityName': facilityData?['name'] ?? 'غير محدد',
-          'specializationId': specDoc.id,
-          'specializationName': specData?['specName'] ?? 'غير محدد',
-          'doctorId': doctorDoc.id,
-          'doctorName': doctorData?['docName'] ?? 'غير محدد',
-        });
-      }
-    } catch (e) {
-      print('خطأ في تحميل الحجوزات من الطبيب ${doctorDoc.id}: $e');
+      setState(() => _isLoading = false);
     }
   }
 
@@ -319,19 +203,15 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
   }
 
   String _getStatusText(Map<String, dynamic> booking) {
-    // حالة "في انتظار التأكيد" معلقة حالياً حسب طلب المستخدم
-    // final isConfirmed = booking['isConfirmed'] ?? false;
-    // if (!isConfirmed) {
-    //   return 'في انتظار التأكيد';
-    // }
-    
+    if (booking['status'] == 'canceled') return 'ملغي';
+
     final bookingDate = DateTime.tryParse(booking['date'] ?? '');
     if (bookingDate == null) return 'غير محدد';
-    
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final bookingDay = DateTime(bookingDate.year, bookingDate.month, bookingDate.day);
-    
+
     if (bookingDay.isBefore(today)) {
       return 'منتهي';
     } else if (bookingDay.isAtSameMomentAs(today)) {
@@ -343,8 +223,8 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'في انتظار التأكيد':
-        return Colors.orange;
+      case 'ملغي':
+        return Colors.red;
       case 'منتهي':
         return Colors.grey;
       case 'اليوم':
@@ -379,7 +259,6 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
     );
 
     if (confirmed == true) {
-      // إضافة loading محلي للحجز المحدد
       setState(() {
         _cancellingBookings.add(bookingId);
       });
@@ -388,22 +267,18 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
         await FirebaseFirestore.instance
             .collection('medicalFacilities')
             .doc(booking['facilityId'])
-            .collection('specializations')
-            .doc(booking['specializationId'])
-            .collection('doctors')
-            .doc(booking['doctorId'])
             .collection('appointments')
             .doc(bookingId)
-            .delete()
+            .update({'status': 'canceled'})
             .timeout(const Duration(seconds: 5));
 
-        // إزالة الحجز من القائمة المحلية ومسح Cache
+        // تحديث الحالة محلياً بدلاً من الحذف
         setState(() {
-          _bookings.removeWhere((b) => b['id'] == bookingId);
+          final idx = _bookings.indexWhere((b) => b['id'] == bookingId);
+          if (idx != -1) _bookings[idx] = {..._bookings[idx], 'status': 'canceled'};
           _cancellingBookings.remove(bookingId);
         });
-        
-        // مسح Cache لضمان تحديث البيانات
+
         clearBookingsCache();
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -416,7 +291,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
         setState(() {
           _cancellingBookings.remove(bookingId);
         });
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('خطأ في إلغاء الحجز: $e'),
@@ -619,7 +494,11 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 elevation: 4,
-                                color: status == 'منتهي' ? Colors.red.withOpacity(0.1) : Colors.white,
+                                color: status == 'ملغي'
+                                    ? Colors.red.withValues(alpha: 0.07)
+                                    : status == 'منتهي'
+                                        ? Colors.grey.withValues(alpha: 0.07)
+                                        : Colors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -658,7 +537,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                               vertical: 6,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: statusColor.withOpacity(0.1),
+                                              color: statusColor.withValues(alpha: 0.1),
                                               borderRadius: BorderRadius.circular(20),
                                               border: Border.all(color: statusColor),
                                             ),
@@ -712,8 +591,8 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                           ),
                                         ],
                                       ),
-                                      // Action buttons - إخفاء الأزرار للحجوزات المنتهية
-                                      if (status != 'منتهي') ...[
+                                      // Action buttons - إخفاء الأزرار للحجوزات المنتهية والملغاة
+                                      if (status != 'منتهي' && status != 'ملغي') ...[
                                         const SizedBox(height: 8),
                                       Row(
                                         children: [

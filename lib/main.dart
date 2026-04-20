@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hospital_app/firebase_options.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
 // import 'package:hospital_app/screnns/onboarding_screen.dart';
@@ -93,6 +94,15 @@ class HospitalApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        textTheme: GoogleFonts.tajawalTextTheme(),
+      ),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          textScaler: const TextScaler.linear(0.85),
+        ),
+        child: child!,
+      ),
       home: AppUpdateWrapper(
         child: FutureBuilder<SharedPreferences>(
           future: SharedPreferences.getInstance(),

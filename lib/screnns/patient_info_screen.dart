@@ -38,44 +38,20 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
   String? patientPhone;
   bool isLoading = false;
   String? selectedTime;
-  bool? isBookingForSelf; // null = لم يتم الاختيار بعد، true = لنفسه، false = لشخص آخر
-  bool showBookingChoice = true; // عرض خيار الحجز لنفسه أم لشخص آخر
-  bool showBookingSuccess = false; // إظهار رسالة نجاح الحجز
-  
-  // Controllers for text fields
+  bool showBookingSuccess = false;
+
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
-  
-  // Data for PDF generation
+
   String? facilityName;
   String? specializationName;
   String? doctorName;
 
-
   @override
   void initState() {
     super.initState();
-    
-    // Initialize controllers
     _nameController = TextEditingController();
     _phoneController = TextEditingController();
-    
-    // إذا كان هذا تأجيل حجز، استخدم البيانات القديمة
-    if (widget.isReschedule && widget.oldBookingData != null) {
-      patientName = widget.oldBookingData!['patientName'];
-      patientPhone = widget.oldBookingData!['patientPhone'];
-      _nameController.text = patientName ?? '';
-      _phoneController.text = patientPhone ?? '';
-      isBookingForSelf = false; // تأجيل الحجز يعتبر لشخص آخر
-      showBookingChoice = false; // لا نحتاج لخيار الحجز في التأجيل
-    } else {
-      // اختيار الحجز لنفسي تلقائياً وملء البيانات
-      isBookingForSelf = true;
-      showBookingChoice = true; // إظهار الخيارات مع تظليل المختار
-      _loadPatientDataOnInit();
-    }
-    
-    // جلب بيانات المركز والتخصص والطبيب
     _loadFacilityData();
   }
 
@@ -87,41 +63,6 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
   }
 
 
-
-  Future<void> _loadPatientDataOnInit() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userName = prefs.getString('userName');
-    final userEmail = prefs.getString('userEmail'); // userEmail يحتوي على رقم الهاتف
-    
-    if (userName != null && userEmail != null) {
-      // تنسيق رقم الهاتف ليكون 10 أرقام يبدأ بـ 0
-      String formattedPhone = userEmail;
-      
-      // إزالة المفتاح الدولي إذا كان موجوداً
-      if (formattedPhone.startsWith('249')) {
-        formattedPhone = '0' + formattedPhone.substring(3);
-      }
-      
-      // التأكد من أن الرقم يبدأ بـ 0
-      if (!formattedPhone.startsWith('0')) {
-        formattedPhone = '0' + formattedPhone;
-      }
-      
-      // التأكد من أن الرقم 10 أرقام
-      if (formattedPhone.length > 10) {
-        formattedPhone = formattedPhone.substring(0, 10);
-      }
-      
-      if (mounted) {
-        setState(() {
-          patientName = userName;
-          patientPhone = formattedPhone;
-          _nameController.text = userName;
-          _phoneController.text = formattedPhone;
-        });
-      }
-    }
-  }
 
   Future<void> _loadFacilityData() async {
     try {
@@ -179,60 +120,6 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       }
     } catch (e) {
       print('خطأ في جلب بيانات المركز: $e');
-    }
-  }
-
-  Future<void> loadPatientData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userName = prefs.getString('userName');
-    final userEmail = prefs.getString('userEmail'); // userEmail يحتوي على رقم الهاتف
-    
-    if (!mounted) return;
-    
-    if (userName != null && userEmail != null) {
-      // تنسيق رقم الهاتف ليكون 10 أرقام يبدأ بـ 0
-      String formattedPhone = userEmail;
-      
-      // إزالة المفتاح الدولي إذا كان موجوداً
-      if (formattedPhone.startsWith('249')) {
-        formattedPhone = '0' + formattedPhone.substring(3);
-      }
-      
-      // التأكد من أن الرقم يبدأ بـ 0
-      if (!formattedPhone.startsWith('0')) {
-        formattedPhone = '0' + formattedPhone;
-      }
-      
-      // التأكد من أن الرقم 10 أرقام
-      if (formattedPhone.length > 10) {
-        formattedPhone = formattedPhone.substring(0, 10);
-      }
-      
-      setState(() {
-        patientName = userName;
-        patientPhone = formattedPhone;
-        _nameController.text = userName;
-        _phoneController.text = formattedPhone;
-      });
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم ملء البيانات تلقائياً من حسابك'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } else {
-      // إذا لم توجد بيانات، اعرض رسالة
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('لم يتم العثور على بيانات الحساب، يرجى إدخال البيانات يدوياً'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
     }
   }
 
@@ -580,39 +467,6 @@ await FirebaseFirestore.instance
     return null;
   }
 
-  void _selectBookingType(bool forSelf) async {
-    if (!mounted) return;
-    
-    setState(() {
-      isBookingForSelf = forSelf;
-      // لا نغير showBookingChoice، نبقيه true لإظهار الخيارات
-    });
-
-    if (forSelf) {
-      // جلب بيانات المريض من SharedPreferences
-      await loadPatientData();
-    } else {
-      // إذا اختار لشخص آخر، امسح البيانات من الحقول
-      setState(() {
-        patientName = null;
-        patientPhone = null;
-        _nameController.clear();
-        _phoneController.clear();
-      });
-      
-      // اعرض رسالة
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('يرجى إدخال بيانات الشخص المراد الحجز له'),
-            backgroundColor: Colors.blue,
-          ),
-        );
-      }
-    }
-  }
-
-
   Future<void> _generateBookingPdf({
     required String dateStr,
     required String availableTime,
@@ -780,63 +634,6 @@ await FirebaseFirestore.instance
                   padding: const EdgeInsets.all(20.0),
                   child: Column(
                     children: [
-                        // خيار نوع الحجز - يظهر دائماً
-                          const Text(
-                            'اختر نوع الحجز:',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF2FBDAF),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: () => _selectBookingType(true),
-                                  icon: Icon(Icons.person, color: isBookingForSelf == true ? Colors.white : const Color(0xFF2FBDAF)),
-                                  label: const Text('لنفسي'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: isBookingForSelf == true 
-                                        ? const Color(0xFF2FBDAF)
-                                        : Colors.grey[200],
-                                    foregroundColor: isBookingForSelf == true 
-                                        ? Colors.white
-                                        : Colors.grey[700],
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: ElevatedButton.icon(
-                                  onPressed: () => _selectBookingType(false),
-                                  icon: Icon(Icons.person_add, color: isBookingForSelf == false ? Colors.white : const Color(0xFF2FBDAF)),
-                                  label: const Text('لشخص آخر'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: isBookingForSelf == false 
-                                        ? const Color(0xFF2FBDAF)
-                                        : Colors.grey[200],
-                                    foregroundColor: isBookingForSelf == false 
-                                        ? Colors.white
-                                        : Colors.grey[700],
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
-                        
-
-                        
                         // حقل الاسم
                         TextFormField(
                           decoration: InputDecoration(

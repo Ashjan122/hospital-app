@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/booking_screen.dart';
 import 'package:hospital_app/widgets/optimized_loading_widget.dart';
+import 'package:hospital_app/utils/network_utils.dart';
 
 class DoctorsScreen extends StatefulWidget {
   final String facilityId;
@@ -49,64 +50,74 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   @override
   void initState() {
     super.initState();
-    _doctorsStream = FirebaseFirestore.instance
-        .collection('medicalFacilities')
-        .doc(widget.facilityId)
-        .collection('specializations')
-        .doc(widget.specId)
-        .collection('doctors')
-        .orderBy('createdAt', descending: true)
-        .snapshots();
+    _doctorsStream =
+        FirebaseFirestore.instance
+            .collection('medicalFacilities')
+            .doc(widget.facilityId)
+            .collection('specializations')
+            .doc(widget.specId)
+            .collection('doctors')
+            .orderBy('createdAt', descending: true)
+            .snapshots();
   }
 
   List<QueryDocumentSnapshot> getFilteredDoctors() {
     // تصفية الأطباء المفعلين أولاً
-    final activeDoctors = _allDoctors.where((doctor) {
-      final data = doctor.data() as Map<String, dynamic>;
-      final isActive = data['isActive'];
-      // فقط الأطباء الذين لديهم isActive = true صراحة
-       // إذا كان هناك تخصص فرعي محدد، فلتر الأطباء حسب التخصص الفرعي
-      if (widget.subSpecialtyId != null) {
-        final doctorSubSpecialty = data['subSpecialization']?.toString();
-        return doctorSubSpecialty == widget.subSpecialtyId;
-      }
-      return isActive == true;
-    }).toList();
-    
-    
-    // ترتيب الأطباء حسب أقرب يوم عمل قادم: غداً أولاً ثم بعد غد وهكذا
+    final activeDoctors =
+        _allDoctors.where((doctor) {
+          final data = doctor.data() as Map<String, dynamic>;
+          final isActive = data['isActive'];
+          // فقط الأطباء الذين لديهم isActive = true صراحة
+          // إذا كان هناك تخصص فرعي محدد، فلتر الأطباء حسب التخصص الفرعي
+          if (widget.subSpecialtyId != null) {
+            final doctorSubSpecialty = data['subSpecialization']?.toString();
+            return doctorSubSpecialty == widget.subSpecialtyId;
+          }
+          return isActive == true;
+        }).toList();
+
+    // ترتيب الأطباء
     final listToSort = List<QueryDocumentSnapshot>.from(activeDoctors);
+    final now = DateTime.now();
+    final today = _getArabicDayName(now.weekday);
+
     listToSort.sort((a, b) {
       final aData = a.data() as Map<String, dynamic>;
       final bData = b.data() as Map<String, dynamic>;
 
+      // حساب حالة العمل اليوم
       final aWorkingDays = _getWorkingDaysList(aData['workingSchedule'] ?? {});
       final bWorkingDays = _getWorkingDaysList(bData['workingSchedule'] ?? {});
 
+      final bool aWorksToday =
+          aWorkingDays.contains(today) && (aData['isBookingEnabled'] != false);
+      final bool bWorksToday =
+          bWorkingDays.contains(today) && (bData['isBookingEnabled'] != false);
+
+      // 1. أولوية لمن يعمل اليوم (يظهرون في الأعلى)
+      if (aWorksToday && !bWorksToday) return -1;
+      if (!aWorksToday && bWorksToday) return 1;
+
+      // 2. إذا تساووا، رتب حسب أقرب يوم عمل قادم
       final aOffset = _getNextWorkingOffset(aWorkingDays);
       final bOffset = _getNextWorkingOffset(bWorkingDays);
       if (aOffset != bOffset) return aOffset.compareTo(bOffset);
 
-      // تعادل: أولوية غداً ثم اليوم ثم بقية الأيام
-      final aPriority = _getWorkingDaysPriority(aWorkingDays);
-      final bPriority = _getWorkingDaysPriority(bWorkingDays);
-      if (aPriority != bPriority) return aPriority.compareTo(bPriority);
-
-      // تعادل نهائي: الاسم الأبجدي
+      // 3. تعادل نهائي: الاسم الأبجدي
       final aName = (aData['docName'] ?? '').toString();
       final bName = (bData['docName'] ?? '').toString();
       return aName.compareTo(bName);
     });
-    
+
     if (_searchQuery.isEmpty) {
       return listToSort;
     }
-    
+
     return listToSort.where((doctor) {
       final data = doctor.data() as Map<String, dynamic>;
       final doctorName = data['docName']?.toString().toLowerCase() ?? '';
       final searchLower = _searchQuery.toLowerCase();
-      
+
       return doctorName.contains(searchLower);
     }).toList();
   }
@@ -125,10 +136,15 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     }
 
     List<String> workingDays = [];
-    
+
     scheduleMap.forEach((day, value) {
-      if (day == 'الأحد' || day == 'الاثنين' || day == 'الثلاثاء' || 
-          day == 'الأربعاء' || day == 'الخميس' || day == 'الجمعة' || day == 'السبت') {
+      if (day == 'الأحد' ||
+          day == 'الاثنين' ||
+          day == 'الثلاثاء' ||
+          day == 'الأربعاء' ||
+          day == 'الخميس' ||
+          day == 'الجمعة' ||
+          day == 'السبت') {
         workingDays.add(day);
       }
     });
@@ -139,20 +155,20 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   // دالة لحساب أولوية أيام العمل (غداً أولاً ثم اليوم)
   int _getWorkingDaysPriority(List<String> workingDays) {
     if (workingDays.isEmpty) {
-      return 999; // أقل أولوية للأطباء بدون أيام عمل
+      return 999;
     }
 
     final now = DateTime.now();
     final today = _getArabicDayName(now.weekday);
     final tomorrow = _getArabicDayName(now.weekday == 7 ? 1 : now.weekday + 1);
 
-    // أولوية 1: يعمل غداً
-    if (workingDays.contains(tomorrow)) {
+    // أولوية 1: يعمل اليوم
+    if (workingDays.contains(today)) {
       return 1;
     }
 
-    // أولوية 2: يعمل اليوم
-    if (workingDays.contains(today)) {
+    // أولوية 2: يعمل غداً
+    if (workingDays.contains(tomorrow)) {
       return 2;
     }
 
@@ -163,14 +179,22 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   // دالة لتحويل رقم اليوم إلى اسم عربي
   String _getArabicDayName(int weekday) {
     switch (weekday) {
-      case 1: return 'الاثنين';
-      case 2: return 'الثلاثاء';
-      case 3: return 'الأربعاء';
-      case 4: return 'الخميس';
-      case 5: return 'الجمعة';
-      case 6: return 'السبت';
-      case 7: return 'الأحد';
-      default: return '';
+      case 1:
+        return 'الاثنين';
+      case 2:
+        return 'الثلاثاء';
+      case 3:
+        return 'الأربعاء';
+      case 4:
+        return 'الخميس';
+      case 5:
+        return 'الجمعة';
+      case 6:
+        return 'السبت';
+      case 7:
+        return 'الأحد';
+      default:
+        return '';
     }
   }
 
@@ -188,11 +212,16 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     }
 
     List<String> workingDays = [];
-    
+
     scheduleMap.forEach((day, value) {
       // التحقق من أن اليوم موجود في قائمة الأيام العربية
-      if (day == 'الأحد' || day == 'الاثنين' || day == 'الثلاثاء' || 
-          day == 'الأربعاء' || day == 'الخميس' || day == 'الجمعة' || day == 'السبت') {
+      if (day == 'الأحد' ||
+          day == 'الاثنين' ||
+          day == 'الثلاثاء' ||
+          day == 'الأربعاء' ||
+          day == 'الخميس' ||
+          day == 'الجمعة' ||
+          day == 'السبت') {
         // إذا كان اليوم موجود في الجدول، فهو يوم عمل
         workingDays.add(day);
       }
@@ -203,8 +232,18 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
     }
 
     // ترتيب الأيام حسب ترتيبها في الأسبوع
-    final dayOrder = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-    workingDays.sort((a, b) => dayOrder.indexOf(a).compareTo(dayOrder.indexOf(b)));
+    final dayOrder = [
+      'الأحد',
+      'الاثنين',
+      'الثلاثاء',
+      'الأربعاء',
+      'الخميس',
+      'الجمعة',
+      'السبت',
+    ];
+    workingDays.sort(
+      (a, b) => dayOrder.indexOf(a).compareTo(dayOrder.indexOf(b)),
+    );
 
     // تقسيم الأيام على أسطر متعددة إذا كانت كثيرة
     String result;
@@ -226,7 +265,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
         result += '\n$thirdLine';
       }
     }
-    
+
     return result;
   }
 
@@ -234,7 +273,8 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
   int _getNextWorkingOffset(List<String> workingDays) {
     if (workingDays.isEmpty) return 999;
     final now = DateTime.now();
-    for (int offset = 1; offset <= 7; offset++) {
+    // ابدأ من 0 ليعني "اليوم"
+    for (int offset = 0; offset <= 6; offset++) {
       final next = now.add(Duration(days: offset));
       final name = _getArabicDayName(next.weekday);
       if (workingDays.contains(name)) return offset;
@@ -251,54 +291,52 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
           actions: [
             _isSearching
                 ? IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _isSearching = false;
-                        _searchQuery = '';
-                        _searchController.clear();
-                      });
-                    },
-                    icon: Icon(Icons.close, color: Color(0xFF2FBDAF)),
-                  )
-                : IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _isSearching = true;
-                      });
-                    },
-                    icon: Icon(Icons.search, color: Color(0xFF2FBDAF)),
-                  ),
-          ],
-          title: _isSearching
-              ? TextField(
-                  controller: _searchController,
-                  onChanged: (value) {
+                  onPressed: () {
                     setState(() {
-                      _searchQuery = value;
+                      _isSearching = false;
+                      _searchQuery = '';
+                      _searchController.clear();
                     });
                   },
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: 'البحث عن طبيب...',
-                    border: InputBorder.none,
-                    hintStyle: TextStyle(
-                      color: Colors.grey[400],
-                      fontSize: 16,
+                  icon: Icon(Icons.close, color: Color(0xFF2FBDAF)),
+                )
+                : IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _isSearching = true;
+                    });
+                  },
+                  icon: Icon(Icons.search, color: Color(0xFF2FBDAF)),
+                ),
+          ],
+          title:
+              _isSearching
+                  ? TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                    },
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'البحث عن طبيب...',
+                      border: InputBorder.none,
+                      hintStyle: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 16,
+                      ),
+                    ),
+                    style: TextStyle(color: Colors.black, fontSize: 16),
+                  )
+                  : Text(
+                    "أطباء ${widget.specializationName}",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2FBDAF),
+                      fontSize: 20,
                     ),
                   ),
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 16,
-                  ),
-                )
-              : Text(
-                  "أطباء ${widget.specializationName}",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2FBDAF),
-                    fontSize: 20,
-                  ),
-                ),
         ),
         body: SafeArea(
           child: StreamBuilder<QuerySnapshot>(
@@ -311,24 +349,32 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                 );
               }
 
+              if (snapshot.hasError) {
+                return buildNetworkErrorWidget(
+                  label: 'فشل تحميل الأطباء بسبب انقطاع الانترنت',
+                  onRetry: () => setState(() {
+                    _doctorsStream = FirebaseFirestore.instance
+                        .collection('medicalFacilities')
+                        .doc(widget.facilityId)
+                        .collection('specializations')
+                        .doc(widget.specId)
+                        .collection('doctors')
+                        .orderBy('createdAt', descending: true)
+                        .snapshots();
+                  }),
+                );
+              }
+
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.medical_services_outlined,
-                        size: 64,
-                        color: Colors.grey[400],
-                      ),
+                      Icon(Icons.medical_services_outlined, size: 64, color: Colors.grey[400]),
                       const SizedBox(height: 16),
                       Text(
                         'لا يوجد أطباء حالياً',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey[600],
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600], fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -337,7 +383,7 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
 
               _allDoctors = snapshot.data!.docs;
               final doctors = getFilteredDoctors();
-              
+
               // إذا لم يكن هناك أطباء مفعلين
               if (doctors.isEmpty) {
                 return Center(
@@ -362,17 +408,13 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                   ),
                 );
               }
-              
+
               if (_searchQuery.isNotEmpty && doctors.isEmpty) {
                 return Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.search_off,
-                        size: 64,
-                        color: Colors.grey[400],
-                      ),
+                      Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
                       const SizedBox(height: 16),
                       Text(
                         'لا يوجد أطباء تطابق البحث',
@@ -394,22 +436,32 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                   final doctorData = doc.data() as Map<String, dynamic>;
                   final doctorName = doctorData['docName'] ?? 'طبيب غير معروف';
                   final dynamic rawPhoto = doctorData['photoUrl'];
-                  final String photoUrl = (rawPhoto is String) ? rawPhoto.trim() : '';
+                  final String photoUrl =
+                      (rawPhoto is String) ? rawPhoto.trim() : '';
                   final bool hasValidPhoto = photoUrl.startsWith('http');
-                  const String fallbackUrl = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
-                  final String effectiveUrl = hasValidPhoto ? photoUrl : fallbackUrl;
+                  const String fallbackUrl =
+                      'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQupVHd_oeqnkds0k3EjT1SX4ctwwblwYP2Uw&s';
+                  final String effectiveUrl =
+                      hasValidPhoto ? photoUrl : fallbackUrl;
                   // حالة العمل غداً وإتاحة الحجز
-                  final List<String> workingDays = _getWorkingDaysList(doctorData['workingSchedule'] ?? {});
-                  final String tomorrow = _getArabicDayName(DateTime.now().weekday == 7 ? 1 : DateTime.now().weekday + 1);
-                  final bool worksTomorrow = workingDays.contains(tomorrow);
-                  final bool isBookingEnabled = (doctorData['isBookingEnabled'] != false);
-                  final Color statusColor = !isBookingEnabled
-                      ? Colors.red
-                      : (worksTomorrow ? Colors.green : Colors.red);
-                  
-
-                  
-
+                  // ابحث عن هذا الجزء داخل ListView.builder وعدله:
+                  final List<String> workingDays = _getWorkingDaysList(
+                    doctorData['workingSchedule'] ?? {},
+                  );
+                  final String today = _getArabicDayName(
+                    DateTime.now().weekday,
+                  ); // تغيير غداً إلى اليوم
+                  final bool worksToday = workingDays.contains(
+                    today,
+                  ); // تغيير المنطق
+                  final bool isBookingEnabled =
+                      (doctorData['isBookingEnabled'] != false);
+                  final Color statusColor =
+                      !isBookingEnabled
+                          ? Colors.red
+                          : (worksToday
+                              ? Colors.green
+                              : Colors.red); // تغيير اللون بناءً على اليوم
 
                   return GestureDetector(
                     key: ValueKey(doc.id),
@@ -424,14 +476,22 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                                 doctorId: doc.id,
                                 name: doctorName,
                                 workingSchedule: Map<String, dynamic>.from(
-                                  (doc.data() as Map<String, dynamic>)['workingSchedule'] ?? {},
+                                  (doc.data()
+                                          as Map<
+                                            String,
+                                            dynamic
+                                          >)['workingSchedule'] ??
+                                      {},
                                 ),
                               ),
                         ),
                       );
                     },
                     child: Card(
-                      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      margin: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 5,
+                      ),
                       elevation: 6,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
@@ -454,7 +514,10 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                                         errorBuilder: (context, error, stack) {
                                           return Container(
                                             color: Colors.grey[300],
-                                            child: const Icon(Icons.person, color: Colors.grey),
+                                            child: const Icon(
+                                              Icons.person,
+                                              color: Colors.grey,
+                                            ),
                                           );
                                         },
                                       ),
@@ -500,7 +563,9 @@ class _DoctorsScreenState extends State<DoctorsScreen> {
                                   ),
                                   SizedBox(height: 4),
                                   Text(
-                                    _getWorkingDaysText(doctorData['workingSchedule'] ?? {}),
+                                    _getWorkingDaysText(
+                                      doctorData['workingSchedule'] ?? {},
+                                    ),
                                     style: TextStyle(
                                       color: Colors.grey[600],
                                       fontSize: 12,

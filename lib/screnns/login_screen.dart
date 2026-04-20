@@ -3,13 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:hospital_app/screnns/patient_home_screen.dart';
 import 'package:hospital_app/screnns/register_screen.dart';
 import 'package:hospital_app/services/sms_service.dart';
-import 'package:hospital_app/services/whatsapp_service.dart';
+import 'package:hospital_app/services/google_auth_service.dart';
 import 'package:hospital_app/screnns/otp_verification_screen.dart';
 import 'package:hospital_app/models/country.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,7 +23,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
   bool _isLoading = false;
-  String _verificationMethod = 'sms';
   Country _selectedCountry = Country.countries.first;
   List<String> _supportPhones = [];
   String _appVersion = '';
@@ -110,14 +110,9 @@ class _LoginScreenState extends State<LoginScreen> {
             final patientName = patientData['name'] ?? 'مريض عزيز';
             final normalizedPhone = foundPhoneNumber!;
 
-            // Send OTP
+            // Send OTP via SMS
             final otp = SMSService.generateOTP();
-            Map<String, dynamic> result;
-            if (_verificationMethod == 'whatsapp') {
-              result = await WhatsAppService.sendOTP(normalizedPhone, otp);
-            } else {
-              result = await SMSService.sendOTP(normalizedPhone, otp);
-            }
+            final result = await SMSService.sendOTP(normalizedPhone, otp);
 
             setState(() {
               _isLoading = false;
@@ -135,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           initialOtp: otp,
                           initialOtpCreatedAt: DateTime.now(),
                           country: _selectedCountry,
-                          verificationMethod: _verificationMethod,
+                          verificationMethod: 'sms',
                           isLoginFlow: true,
                         ),
                   ),
@@ -223,6 +218,26 @@ class _LoginScreenState extends State<LoginScreen> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (context) => const RegisterScreen()));
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() => _isLoading = true);
+    final result = await GoogleAuthService.signUpOrSignIn();
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result['success']) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('فشل تسجيل الدخول بـ Google: ${result['message']}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _loadSupportPhonesOnce() async {
@@ -459,118 +474,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 24),
 
-                        // Verification method selection
-                        Row(
-                          children: [
-                            Expanded(
-                              child: GestureDetector(
-                                onTap:
-                                    () => setState(
-                                      () => _verificationMethod = 'sms',
-                                    ),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                    horizontal: 16,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        _verificationMethod == 'sms'
-                                            ? const Color(0xFFE0F2F1)
-                                            : Colors.white,
-                                    border: Border.all(
-                                      color:
-                                          _verificationMethod == 'sms'
-                                              ? const Color(0xFF2FBDAF)
-                                              : Colors.grey[300]!,
-                                      width: 1.5,
-                                    ),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      if (_verificationMethod == 'sms')
-                                        const Icon(
-                                          Icons.check,
-                                          color: Color(0xFF2FBDAF),
-                                          size: 16,
-                                        ),
-                                      if (_verificationMethod == 'sms')
-                                        const SizedBox(width: 6),
-                                      Text(
-                                        'رسالة نصية',
-                                        style: TextStyle(
-                                          color:
-                                              _verificationMethod == 'sms'
-                                                  ? Colors.black87
-                                                  : Colors.grey[600],
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap:
-                                    () => setState(
-                                      () => _verificationMethod = 'whatsapp',
-                                    ),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                    horizontal: 16,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        _verificationMethod == 'whatsapp'
-                                            ? const Color(0xFFE0F2F1)
-                                            : Colors.white,
-                                    border: Border.all(
-                                      color:
-                                          _verificationMethod == 'whatsapp'
-                                              ? const Color(0xFF2FBDAF)
-                                              : Colors.grey[300]!,
-                                      width: 1.5,
-                                    ),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      if (_verificationMethod == 'whatsapp')
-                                        const Icon(
-                                          Icons.check,
-                                          color: Color(0xFF2FBDAF),
-                                          size: 16,
-                                        ),
-                                      if (_verificationMethod == 'whatsapp')
-                                        const SizedBox(width: 6),
-                                      Text(
-                                        'واتساب',
-                                        style: TextStyle(
-                                          color:
-                                              _verificationMethod == 'whatsapp'
-                                                  ? Colors.black87
-                                                  : Colors.grey[600],
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
                         // Login button
                         SizedBox(
                           width: double.infinity,
@@ -604,6 +507,52 @@ class _LoginScreenState extends State<LoginScreen> {
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Divider
+                        Row(
+                          children: [
+                            const Expanded(child: Divider()),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: Text(
+                                'أو',
+                                style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                              ),
+                            ),
+                            const Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Google Sign-In button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: OutlinedButton.icon(
+                            onPressed: _isLoading ? null : _signInWithGoogle,
+                            icon: const FaIcon(
+                              FontAwesomeIcons.google,
+                              color: Color(0xFFDB4437),
+                              size: 20,
+                            ),
+                            label: const Text(
+                              'تسجيل الدخول بـ Google',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: Colors.grey[300]!),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              backgroundColor: Colors.white,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),

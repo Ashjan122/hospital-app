@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/specialties_screen.dart';
-import 'package:hospital_app/screnns/insurance_companies_screen.dart';
-import 'package:hospital_app/screnns/lab_results_screen.dart';
 
 class FacilityDetailsScreen extends StatefulWidget {
   final String facilityId;
@@ -49,7 +47,6 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  
                   // Cards section
                   Expanded(
                     child: Column(
@@ -64,15 +61,16 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => SpecialtiesScreen(
-                                  facilityId: widget.facilityId,
-                                ),
+                                builder:
+                                    (context) => SpecialtiesScreen(
+                                      facilityId: widget.facilityId,
+                                    ),
                               ),
                             );
                           },
                         ),
                         const SizedBox(height: 16),
-                         // Insurance Companies Card (disabled - coming soon)
+                        // Insurance Companies Card (disabled - coming soon)
                         _buildCard(
                           title: "شركات التأمين",
                           subtitle: "قريباً",
@@ -81,27 +79,11 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                           onTap: () {},
                           disabled: true,
                         ),
-                        
-                        
-                        
+
                         // Laboratory Results Card - تظهر فقط في مركز الرومي الطبي (وليس طب الأسنان)
-                        if (widget.facilityName.contains('الرومي الطبي') && !widget.facilityName.contains('طب الأسنان')) ...[
+                        if (widget.facilityName.contains('الرومي الطبي') &&
+                            !widget.facilityName.contains('طب الأسنان')) ...[
                           const SizedBox(height: 16),
-                          _buildCard(
-                            title: "نتيجة المختبر",
-                            subtitle: "عرض نتائج الفحوصات المخبرية",
-                            icon: Icons.science,
-                            color: Colors.orange,
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const LabResultsScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                         
                         ],
                       ],
                     ),

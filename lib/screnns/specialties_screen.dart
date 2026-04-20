@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/doctors_screen.dart';
+import 'package:hospital_app/utils/network_utils.dart';
 import 'package:hospital_app/widgets/optimized_loading_widget.dart';
 
 class SpecialtiesScreen extends StatefulWidget {
@@ -31,8 +32,9 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
       _allSpecialties = snapshot.docs;
       return snapshot.docs;
     } catch (e) {
+      if (isNetworkError(e)) rethrow;
       print('خطأ في تحميل التخصصات (الترتيب من القاعدة): $e');
-      // fallback: بدون orderBy من القاعدة، نجلب ونرتب محلياً إذا توفر الحقل
+      // fallback: بدون orderBy من القاعدة، نجلب ونرتب محلياً
       try {
         final snapshot = await FirebaseFirestore.instance
             .collection('medicalFacilities')
@@ -42,16 +44,20 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
             .get()
             .timeout(const Duration(seconds: 8));
 
-        final docs = snapshot.docs..sort((a, b) {
-          final ad = (a.data());
-          final bd = (b.data());
-          final ao = (ad['order'] is num) ? (ad['order'] as num).toInt() : 0;
-          final bo = (bd['order'] is num) ? (bd['order'] as num).toInt() : 0;
-          return ao.compareTo(bo);
-        });
+        final docs =
+            snapshot.docs..sort((a, b) {
+              final ad = (a.data());
+              final bd = (b.data());
+              final ao =
+                  (ad['order'] is num) ? (ad['order'] as num).toInt() : 0;
+              final bo =
+                  (bd['order'] is num) ? (bd['order'] as num).toInt() : 0;
+              return ao.compareTo(bo);
+            });
         _allSpecialties = docs;
         return docs;
       } catch (e2) {
+        if (isNetworkError(e2)) rethrow;
         print('خطأ في تحميل التخصصات (فرز محلي): $e2');
         return [];
       }
@@ -62,12 +68,12 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
     if (_searchQuery.isEmpty) {
       return _allSpecialties;
     }
-    
+
     return _allSpecialties.where((specialty) {
       final data = specialty.data() as Map<String, dynamic>;
       final specName = data['specName']?.toString().toLowerCase() ?? '';
       final searchLower = _searchQuery.toLowerCase();
-      
+
       return specName.contains(searchLower);
     }).toList();
   }
@@ -81,54 +87,52 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
           actions: [
             _isSearching
                 ? IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _isSearching = false;
-                        _searchQuery = '';
-                        _searchController.clear();
-                      });
-                    },
-                    icon: Icon(Icons.close, color: Color(0xFF2FBDAF)),
-                  )
-                : IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _isSearching = true;
-                      });
-                    },
-                    icon: Icon(Icons.search, color: Color(0xFF2FBDAF)),
-                  ),
-          ],
-          title: _isSearching
-              ? TextField(
-                  controller: _searchController,
-                  onChanged: (value) {
+                  onPressed: () {
                     setState(() {
-                      _searchQuery = value;
+                      _isSearching = false;
+                      _searchQuery = '';
+                      _searchController.clear();
                     });
                   },
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: 'البحث عن تخصص طبي...',
-                    border: InputBorder.none,
-                    hintStyle: TextStyle(
-                      color: Colors.grey[400],
-                      fontSize: 16,
+                  icon: Icon(Icons.close, color: Color(0xFF2FBDAF)),
+                )
+                : IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _isSearching = true;
+                    });
+                  },
+                  icon: Icon(Icons.search, color: Color(0xFF2FBDAF)),
+                ),
+          ],
+          title:
+              _isSearching
+                  ? TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                    },
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: 'البحث عن تخصص طبي...',
+                      border: InputBorder.none,
+                      hintStyle: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 16,
+                      ),
+                    ),
+                    style: TextStyle(color: Colors.black, fontSize: 16),
+                  )
+                  : Text(
+                    "التخصصات الطبية",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF2FBDAF),
+                      fontSize: 25,
                     ),
                   ),
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 16,
-                  ),
-                )
-              : Text(
-                  "التخصصات الطبية",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF2FBDAF),
-                    fontSize: 30,
-                  ),
-                ),
         ),
         body: SafeArea(
           child: FutureBuilder<List<QueryDocumentSnapshot>>(
@@ -141,48 +145,59 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                 );
               }
 
-              final specialties = _searchQuery.isEmpty ? snapshot.data ?? [] : getFilteredSpecialties();
+              if (snapshot.hasError) {
+                return buildNetworkErrorWidget(
+                  label: 'فشل تحميل التخصصات بسبب انقطاع الانترنت',
+                  onRetry: () => setState(() {}),
+                );
+              }
+
+              final specialties =
+                  _searchQuery.isEmpty
+                      ? snapshot.data ?? []
+                      : getFilteredSpecialties();
               if (specialties.isEmpty) {
                 return Center(
-                  child: _searchQuery.isNotEmpty
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.search_off,
-                              size: 64,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'لا يوجد تخصصات تطابق البحث',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey[600],
-                                fontWeight: FontWeight.w500,
+                  child:
+                      _searchQuery.isNotEmpty
+                          ? Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search_off,
+                                size: 64,
+                                color: Colors.grey[400],
                               ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.medical_services_outlined,
-                              size: 64,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'لا توجد تخصصات حالياً',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey[600],
-                                fontWeight: FontWeight.w500,
+                              const SizedBox(height: 16),
+                              Text(
+                                'لا يوجد تخصصات تطابق البحث',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          )
+                          : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.medical_services_outlined,
+                                size: 64,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'لا توجد تخصصات حالياً',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                 );
               }
 
@@ -196,21 +211,19 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
 
                   return Card(
                     elevation: 6,
-                    margin: EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 10,
-                    ),
+                    margin: EdgeInsets.symmetric(horizontal: 18, vertical: 5),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('medicalFacilities')
-                          .doc(widget.facilityId)
-                          .collection('specializations')
-                          .doc(specId)
-                          .collection('subSpecialties')
-                          .snapshots(),
+                      stream:
+                          FirebaseFirestore.instance
+                              .collection('medicalFacilities')
+                              .doc(widget.facilityId)
+                              .collection('specializations')
+                              .doc(specId)
+                              .collection('subSpecialties')
+                              .snapshots(),
                       builder: (context, subSnapshot) {
                         final subSpecialties = subSnapshot.data?.docs ?? [];
                         final hasSubSpecialties = subSpecialties.isNotEmpty;
@@ -228,32 +241,46 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                                 ),
                               ),
                             ),
-                            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                            trailing: const Icon(
+                              Icons.arrow_forward_ios,
+                              size: 16,
+                            ),
                             children: [
                               ...subSpecialties.map((subDoc) {
-                                final subData = subDoc.data() as Map<String, dynamic>;
-                                final subName = subData['name'] ?? 'تخصص فرعي غير معروف';
+                                final subData =
+                                    subDoc.data() as Map<String, dynamic>;
+                                final subName =
+                                    subData['name'] ?? 'تخصص فرعي غير معروف';
                                 final subId = subDoc.id;
-                                
+
                                 return InkWell(
                                   onTap: () {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (context) => DoctorsScreen(
-                                          facilityId: widget.facilityId,
-                                          specId: specId, // استخدام التخصص الرئيسي
-                                          specializationName: subName,
-                                          subSpecialtyId: subId, // التخصص الفرعي
-                                        ),
+                                        builder:
+                                            (context) => DoctorsScreen(
+                                              facilityId: widget.facilityId,
+                                              specId:
+                                                  specId, // استخدام التخصص الرئيسي
+                                              specializationName: subName,
+                                              subSpecialtyId:
+                                                  subId, // التخصص الفرعي
+                                            ),
                                       ),
                                     );
                                   },
                                   child: ListTile(
                                     dense: true,
-                                    leading: const Icon(Icons.arrow_left, size: 16),
+                                    leading: const Icon(
+                                      Icons.arrow_left,
+                                      size: 16,
+                                    ),
                                     title: Text(subName),
-                                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                                    trailing: const Icon(
+                                      Icons.arrow_forward_ios,
+                                      size: 16,
+                                    ),
                                   ),
                                 );
                               }).toList(),
@@ -266,27 +293,32 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => DoctorsScreen(
-                                    facilityId: widget.facilityId,
-                                    specId: specId,
-                                    specializationName: specName,
-                                    subSpecialtyId: null,
-                                  ),
+                                  builder:
+                                      (context) => DoctorsScreen(
+                                        facilityId: widget.facilityId,
+                                        specId: specId,
+                                        specializationName: specName,
+                                        subSpecialtyId: null,
+                                      ),
                                 ),
                               );
                             },
                             child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 8,
+                              ),
                               title: Padding(
                                 padding: const EdgeInsets.only(top: 8),
                                 child: Text(
                                   specName,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                  ),
+                                  style: const TextStyle(fontSize: 18),
                                 ),
                               ),
-                              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                              trailing: const Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                              ),
                             ),
                           );
                         }
@@ -301,7 +333,6 @@ class _SpecialtiesScreenState extends State<SpecialtiesScreen> {
       ),
     );
   }
-
 
   @override
   void dispose() {

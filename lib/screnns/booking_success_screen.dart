@@ -4,7 +4,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:hospital_app/services/sms_service.dart';
-import 'package:hospital_app/services/whatsapp_service.dart';
 import 'dart:io';
 
 class BookingSuccessScreen extends StatefulWidget {
@@ -75,10 +74,7 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
   Future<void> _sendNotifications() async {
     try {
       final message = _buildMessageBody();
-      // SMS
       await SMSService.sendSimpleSMS(widget.patientPhone, message);
-      // WhatsApp
-      await WhatsAppService.sendSimpleMessage(widget.patientPhone, message);
     } catch (e) {
       // تجاهل الأخطاء حتى لا تؤثر على تجربة المستخدم
       // يمكن لاحقاً إضافة لوجيك لإعادة المحاولة

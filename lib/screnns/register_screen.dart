@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hospital_app/services/sms_service.dart';
-import 'package:hospital_app/services/whatsapp_service.dart';
 import 'package:hospital_app/models/country.dart';
 import 'package:hospital_app/screnns/otp_verification_screen.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
@@ -23,9 +22,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   List<String> _supportPhones = [];
   
-  // Country and verification method selection
-  Country _selectedCountry = Country.countries.first; // Default to Sudan
-  String _verificationMethod = 'sms'; // 'sms' or 'whatsapp'
+  Country _selectedCountry = Country.countries.first;
   
   // Phone number validation patterns for different countries
   final Map<String, RegExp> _phonePatterns = {
@@ -168,19 +165,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         print('🔍 بدء عملية إنشاء الحساب...');
         print('📱 رقم الهاتف: $formattedPhoneNumber');
         print('🌍 البلد: ${_selectedCountry.nameAr}');
-        print('📱 طريقة التحقق: $_verificationMethod');
-        
+
         String otp = SMSService.generateOTP();
         print('🔐 رمز التحقق المُنشأ: $otp');
-        
+
         print('📡 إرسال رمز التحقق...');
-        Map<String, dynamic> result;
-        
-        if (_verificationMethod == 'whatsapp') {
-          result = await WhatsAppService.sendOTP(formattedPhoneNumber, otp);
-        } else {
-          result = await SMSService.sendOTP(formattedPhoneNumber, otp);
-        }
+        final result = await SMSService.sendOTP(formattedPhoneNumber, otp);
         
         print('📊 نتيجة الإرسال: $result');
 
@@ -201,7 +191,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   initialOtp: otp,
                   initialOtpCreatedAt: DateTime.now(),
                   country: _selectedCountry,
-                  verificationMethod: _verificationMethod,
+                  verificationMethod: 'sms',
                 ),
               ),
             );
@@ -568,106 +558,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             
                             return null;
                           },
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Verification method selection
-                        Row(
-                          children: [
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _verificationMethod = 'sms';
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                                  decoration: BoxDecoration(
-                                    color: _verificationMethod == 'sms' 
-                                        ? const Color(0xFFE0F2F1) 
-                                        : Colors.white,
-                                    border: Border.all(
-                                      color: _verificationMethod == 'sms' 
-                                          ? const Color(0xFF2FBDAF) 
-                                          : Colors.grey[300]!,
-                                      width: 1.5,
-                                    ),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      if (_verificationMethod == 'sms')
-                                        const Icon(
-                                          Icons.check,
-                                          color: Color(0xFF2FBDAF),
-                                          size: 16,
-                                        ),
-                                      if (_verificationMethod == 'sms') const SizedBox(width: 6),
-                                      Text(
-                                        'رسالة نصية',
-                                        style: TextStyle(
-                                          color: _verificationMethod == 'sms' 
-                                              ? Colors.black87
-                                              : Colors.grey[600],
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _verificationMethod = 'whatsapp';
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                                  decoration: BoxDecoration(
-                                    color: _verificationMethod == 'whatsapp' 
-                                        ? const Color(0xFFE0F2F1) 
-                                        : Colors.white,
-                                    border: Border.all(
-                                      color: _verificationMethod == 'whatsapp' 
-                                          ? const Color(0xFF2FBDAF) 
-                                          : Colors.grey[300]!,
-                                      width: 1.5,
-                                    ),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      if (_verificationMethod == 'whatsapp')
-                                        const Icon(
-                                          Icons.check,
-                                          color: Color(0xFF2FBDAF),
-                                          size: 16,
-                                        ),
-                                      if (_verificationMethod == 'whatsapp') const SizedBox(width: 6),
-                                      Text(
-                                        'واتساب',
-                                        style: TextStyle(
-                                          color: _verificationMethod == 'whatsapp' 
-                                              ? Colors.black87
-                                              : Colors.grey[600],
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
                         ),
                         const SizedBox(height: 20),
 
