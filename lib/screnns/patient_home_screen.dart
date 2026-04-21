@@ -1,19 +1,19 @@
 import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:hospital_app/screnns/hospital_screen.dart';
-import 'package:hospital_app/screnns/patient_bookings_screen.dart';
-import 'package:hospital_app/screnns/booking_screen.dart';
-import 'package:hospital_app/screnns/login_screen.dart';
 import 'package:hospital_app/screnns/about_screen.dart';
-import 'package:hospital_app/screnns/home_clinic_screen.dart';
+import 'package:hospital_app/screnns/booking_screen.dart';
+import 'package:hospital_app/screnns/hospital_screen.dart';
+import 'package:hospital_app/screnns/login_screen.dart';
+import 'package:hospital_app/screnns/patient_bookings_screen.dart';
 import 'package:hospital_app/services/central_data_service.dart';
 import 'package:hospital_app/services/presence_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:badges/badges.dart' as badges;
+import 'package:lottie/lottie.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PatientHomeScreen extends StatefulWidget {
   const PatientHomeScreen({super.key});
@@ -563,12 +563,14 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                   try {
                     final prefs = await SharedPreferences.getInstance();
                     final patientId = prefs.getString('userId');
-                    
+
                     if (patientId == null || patientId.isEmpty) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('خطأ: لم يتم العثور على معرف المستخدم'),
+                            content: Text(
+                              'خطأ: لم يتم العثور على معرف المستخدم',
+                            ),
                             backgroundColor: Colors.red,
                           ),
                         );
@@ -581,13 +583,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                         .collection('patients')
                         .doc(patientId)
                         .update({
-                      'name': newName,
-                      'updatedAt': FieldValue.serverTimestamp(),
-                    });
+                          'name': newName,
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        });
 
                     // حفظ الاسم في SharedPreferences
                     await prefs.setString('userName', newName);
-                    
+
                     if (mounted) {
                       setState(() {
                         patientName = newName;
@@ -1346,22 +1348,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               fontSize: 30,
             ),
           ),
-          actions: [
-            IconButton(
-              onPressed: _openBookings,
-              icon: badges.Badge(
-                position: badges.BadgePosition.topEnd(top: 0, end: 0),
-                showBadge: _hasNewBookings,
-                badgeContent: const SizedBox.shrink(),
-                badgeStyle: const badges.BadgeStyle(
-                  badgeColor: Colors.red,
-                  padding: EdgeInsets.all(4),
-                  elevation: 0,
-                ),
-                child: const Icon(Icons.list_alt, color: Color(0xFF2FBDAF)),
-              ),
-            ),
-          ],
         ),
         // قائمة جانبية تحتوي على اسم المستخدم ورقم الهاتف وحول التطبيق وتسجيل الخروج
         drawer: Drawer(
@@ -1577,12 +1563,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // Medical Facilities Card
           _buildCard(
             title: "المرافق الطبية",
             subtitle: "استكشف المرافق والحجز",
             icon: Icons.apartment,
             color: Colors.green,
+            lottieAsset:
+                'assets/lotti/hospital  home building maison  mocca animation.json',
             onTap: () {
               Navigator.push(
                 context,
@@ -1591,23 +1578,21 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             },
           ),
           const SizedBox(height: 16),
-          // My Bookings Card
-          /*_buildCard(
+          _buildCard(
             title: "حجوزاتي",
-            subtitle: "عرض وإدارة حجوزاتك",
-            icon: Icons.calendar_today,
-            color: const Color(0xFF2FBDAF),
+            subtitle: "عرض جميع الحجوزات",
+            icon: Icons.av_timer_sharp,
+            color: Colors.purpleAccent,
+            lottieAsset: 'assets/lotti/online appointment CRM.json',
             onTap: _openBookings,
           ),
           const SizedBox(height: 16),
-          */
-
-          // Home Clinic Card (disabled - coming soon)
           _buildCard(
             title: "العيادة المنزلية",
             subtitle: "قريباً",
             icon: Icons.home,
             color: Colors.orange,
+            lottieAsset: 'assets/lotti/Home.json',
             onTap: () {},
             disabled: true,
           ),
@@ -1816,6 +1801,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     required Color color,
     required VoidCallback onTap,
     bool disabled = false,
+    String? lottieAsset,
   }) {
     return GestureDetector(
       onTap: disabled ? null : onTap,
@@ -1836,18 +1822,31 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           padding: const EdgeInsets.all(24),
           child: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(disabled ? 0.06 : 0.1),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  icon,
-                  size: 32,
-                  color: disabled ? color.withOpacity(0.5) : color,
-                ),
-              ),
+              lottieAsset != null
+                  ? Lottie.asset(
+                    lottieAsset,
+                    width: 62,
+                    height: 62,
+                    fit: BoxFit.contain,
+                    errorBuilder:
+                        (_, __, ___) => Icon(
+                          icon,
+                          size: 32,
+                          color: disabled ? color.withOpacity(0.5) : color,
+                        ),
+                  )
+                  : Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(disabled ? 0.06 : 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 32,
+                      color: disabled ? color.withOpacity(0.5) : color,
+                    ),
+                  ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(

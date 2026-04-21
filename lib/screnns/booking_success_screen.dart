@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:hospital_app/services/sms_service.dart';
+import 'package:hospital_app/screnns/patient_bookings_screen.dart';
 import 'dart:io';
 
 class BookingSuccessScreen extends StatefulWidget {
@@ -55,20 +56,7 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
     final dayName = intl.DateFormat('EEEE', 'ar').format(widget.bookingDate);
     final formattedDate = intl.DateFormat('yyyy-MM-dd').format(widget.bookingDate);
     final periodText = widget.period == 'morning' ? 'صباحاً' : 'مساءً';
-    final timeParts = widget.bookingTime.split(':');
-    final hour = int.tryParse(timeParts[0]) ?? 0;
-    final minute = timeParts.length > 1 ? timeParts[1] : '00';
-    String displayTime;
-    if (hour == 0) {
-      displayTime = '12:$minute $periodText';
-    } else if (hour < 12) {
-      displayTime = '$hour:$minute $periodText';
-    } else if (hour == 12) {
-      displayTime = '12:$minute $periodText';
-    } else {
-      displayTime = '${hour - 12}:$minute $periodText';
-    }
-    return 'تطبيق جودة الطبي\n\nتم حجز موعد بنجاح\n\nاسم المركز: ${widget.facilityName}\nاسم المريض: ${widget.patientName}\nرقم الهاتف: ${widget.patientPhone}\nالطبيب: ${widget.doctorName} (${widget.specializationName})\nوقت الحجز: $dayName - $formattedDate - $displayTime\n\nشكراً لاختياركم تطبيق جودة الطبي';
+    return 'تطبيق جودة الطبي\n\nتم حجز موعد بنجاح\n\nاسم المركز: ${widget.facilityName}\nاسم المريض: ${widget.patientName}\nرقم الهاتف: ${widget.patientPhone}\nالطبيب: ${widget.doctorName} (${widget.specializationName})\nموعد الحجز: $dayName - $formattedDate - $periodText\n\nشكراً لاختياركم تطبيق جودة الطبي';
   }
 
   Future<void> _sendNotifications() async {
@@ -84,26 +72,9 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // تنسيق التاريخ والوقت
     final dayName = intl.DateFormat('EEEE', 'ar').format(widget.bookingDate);
     final formattedDate = intl.DateFormat('yyyy-MM-dd').format(widget.bookingDate);
-    
-    // تحويل الوقت إلى 12 ساعة
-    final timeParts = widget.bookingTime.split(':');
-    final hour = int.parse(timeParts[0]);
-    final minute = timeParts[1];
     final periodText = widget.period == 'morning' ? 'صباحاً' : 'مساءً';
-    
-    String displayTime;
-    if (hour == 0) {
-      displayTime = '12:$minute $periodText';
-    } else if (hour < 12) {
-      displayTime = '$hour:$minute $periodText';
-    } else if (hour == 12) {
-      displayTime = '12:$minute $periodText';
-    } else {
-      displayTime = '${hour - 12}:$minute $periodText';
-    }
 
     return Directionality(
       textDirection: TextDirection.rtl,
@@ -119,6 +90,7 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
           ),
           backgroundColor: Colors.white,
           elevation: 0,
+          automaticallyImplyLeading: false,
           iconTheme: IconThemeData(color: const Color(0xFF2FBDAF)),
         ),
         body: Container(
@@ -259,7 +231,7 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
                         const SizedBox(height: 8),
                         // تفاصيل الموعد في سطر واحد
                         Text(
-                          '$dayName - $formattedDate - $displayTime',
+                          '$dayName - $formattedDate - $periodText',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
@@ -303,23 +275,29 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: OutlinedButton(
+                        child: ElevatedButton(
                           onPressed: () {
-                            Navigator.of(context).pop();
+                            PatientBookingsScreen.clearBookingsCache();
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(
+                                builder: (_) => const PatientBookingsScreen(),
+                              ),
+                              (route) => route.isFirst,
+                            );
                           },
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: Colors.grey[300]!),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2FBDAF),
+                            foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                             minimumSize: const Size.fromHeight(48),
                           ),
-                          child: Text(
-                            'موافق',
+                          child: const Text(
+                            'حجوزاتي',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
-                              color: Colors.grey[700],
                             ),
                           ),
                         ),

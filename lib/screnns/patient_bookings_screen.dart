@@ -13,6 +13,8 @@ import 'dart:io';
 class PatientBookingsScreen extends StatefulWidget {
   const PatientBookingsScreen({super.key});
 
+  static void clearBookingsCache() => _PatientBookingsScreenState.clearBookingsCache();
+
   @override
   State<PatientBookingsScreen> createState() => _PatientBookingsScreenState();
 }
@@ -139,18 +141,31 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
         };
       }).toList();
 
-      // ترتيب الحجوزات: الأحدث أولاً
+      // ترتيب الحجوزات: آخر حجز تم إنشاؤه أولاً
       allBookings.sort((a, b) {
+        // أولاً: استخدم createdAt إن وُجد
+        final createdA = a['createdAt'];
+        final createdB = b['createdAt'];
+        if (createdA != null && createdB != null) {
+          DateTime? dtA, dtB;
+          if (createdA is DateTime) {
+            dtA = createdA;
+          } else if (createdA.runtimeType.toString().contains('Timestamp')) {
+            dtA = (createdA as dynamic).toDate() as DateTime;
+          }
+          if (createdB is DateTime) {
+            dtB = createdB;
+          } else if (createdB.runtimeType.toString().contains('Timestamp')) {
+            dtB = (createdB as dynamic).toDate() as DateTime;
+          }
+          if (dtA != null && dtB != null) return dtB.compareTo(dtA);
+        }
+        // ثانياً: استخدم تاريخ الموعد
         final dateA = DateTime.tryParse(a['date'] ?? '');
         final dateB = DateTime.tryParse(b['date'] ?? '');
         if (dateA == null && dateB == null) return 0;
         if (dateA == null) return 1;
         if (dateB == null) return -1;
-        if (dateA.year == dateB.year &&
-            dateA.month == dateB.month &&
-            dateA.day == dateB.day) {
-          return (b['time'] ?? '').compareTo(a['time'] ?? '');
-        }
         return dateB.compareTo(dateA);
       });
 
@@ -573,17 +588,7 @@ class _PatientBookingsScreenState extends State<PatientBookingsScreen> {
                                           Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
                                           const SizedBox(width: 8),
                                           Text(
-                                            booking['date'] ?? 'غير محدد',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.grey[600],
-                                            ),
-                                          ),
-                                          const SizedBox(width: 16),
-                                          Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            '${booking['time']} (${booking['period'] == 'morning' ? 'صباحاً' : 'مساءً'})',
+                                            '${booking['date'] ?? 'غير محدد'} - ${booking['period'] == 'morning' ? 'صباحاً' : 'مساءً'}',
                                             style: TextStyle(
                                               fontSize: 14,
                                               color: Colors.grey[600],

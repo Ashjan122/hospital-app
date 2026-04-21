@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/patient_info_screen.dart';
@@ -45,7 +46,8 @@ class _BookingScreenState extends State<BookingScreen> {
   bool _loadingQueue = false;
   bool _isFull = false;
   Map<String, dynamic>? _doctorData;
-  String? _loadedSpecialty; // التخصص المحمّل من قاعدة البيانات
+  String? _loadedSpecialty;
+  StreamSubscription<QuerySnapshot>? _queueSubscription;
 
   // ملاحظة: هذا الكلاس يتحقق من الوقت الحالي مقارنة بجدول الطبيب
   // أمثلة:
@@ -109,10 +111,6 @@ class _BookingScreenState extends State<BookingScreen> {
       }
     }
     return allowed;
-  }
-
-  int _extractCapacity(Map<String, dynamic>? periodData) {
-    return _extractCapacityWithShift(periodData, selectedShift);
   }
 
   int _extractCapacityWithShift(
@@ -184,9 +182,11 @@ class _BookingScreenState extends State<BookingScreen> {
     return 0;
   }
 
-  Future<void> _updateQueueInfo(DateTime date) async {
+  void _updateQueueInfo(DateTime date) {
     final dayStr = intl.DateFormat('yyyy-MM-dd').format(date);
     final String? effectiveShift = selectedShift;
+
+    _queueSubscription?.cancel();
 
     if (effectiveShift == null) {
       setState(() {
@@ -197,49 +197,39 @@ class _BookingScreenState extends State<BookingScreen> {
       return;
     }
 
-    setState(() {
-      _loadingQueue = true;
-    });
+    setState(() => _loadingQueue = true);
 
-    try {
-      // التعديل هنا: المسار الجديد يتجه إلى collection('appointments') مباشرة تحت الـ facility
-      final qs =
-          await FirebaseFirestore.instance
-              .collection('medicalFacilities')
-              .doc(widget.facilityId) // الـ facilityId
-              .collection('appointments') // المسار الصحيح للحجوزات
-              .where('date', isEqualTo: dayStr)
-              .where('period', isEqualTo: effectiveShift)
-              .where(
-                'doctorId',
-                isEqualTo: widget.doctorId,
-              ) // الفلترة حسب الطبيب
-              .get();
+    final dayName = intl.DateFormat('EEEE', 'ar').format(date).trim();
+    final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
+    final periodData = schedule?[effectiveShift] as Map<String, dynamic>?;
+    final capacity = _extractCapacityWithShift(periodData, effectiveShift);
 
-      final count = qs.docs.length;
-
-      // جلب السعة (يظل كما هو لأنك تجلبها من الـ workingSchedule)
-      final dayName = intl.DateFormat('EEEE', 'ar').format(date).trim();
-      final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
-      final periodData = (schedule?[effectiveShift]) as Map<String, dynamic>?;
-      final capacity = _extractCapacity(periodData);
-
-      setState(() {
-        _dailyCapacity = capacity > 0 ? capacity : null;
-        _queuePosition = count + 1;
-        _isFull = (_dailyCapacity != null) && (count >= _dailyCapacity!);
-        _loadingQueue = false;
-      });
-
-      print(
-        'DEBUG: الاستعلام نجح. المسار: facility/appointments. عدد الحجوزات: $count',
-      );
-    } catch (e) {
-      print('ERROR: خطأ في الاستعلام: $e');
-      setState(() {
-        _loadingQueue = false;
-      });
-    }
+    _queueSubscription = FirebaseFirestore.instance
+        .collection('medicalFacilities')
+        .doc(widget.facilityId)
+        .collection('appointments')
+        .where('date', isEqualTo: dayStr)
+        .where('period', isEqualTo: effectiveShift)
+        .where('doctorId', isEqualTo: widget.doctorId)
+        .snapshots()
+        .listen(
+          (qs) {
+            if (!mounted) return;
+            final count = qs.docs
+                .where((doc) => doc.data()['status'] != 'canceled')
+                .length;
+            setState(() {
+              _dailyCapacity = capacity > 0 ? capacity : null;
+              _queuePosition = count;
+              _isFull = (_dailyCapacity != null) && (count >= _dailyCapacity!);
+              _loadingQueue = false;
+            });
+          },
+          onError: (_) {
+            if (!mounted) return;
+            setState(() => _loadingQueue = false);
+          },
+        );
   }
 
   @override
@@ -248,9 +238,14 @@ class _BookingScreenState extends State<BookingScreen> {
     initializeDateFormatting('ar', null).then((_) {
       setState(() => localeInitialized = true);
     });
-    // تحميل الأيام المحظورة وبيانات الطبيب
     _loadBlockedDates();
     _loadDoctorInfo();
+  }
+
+  @override
+  void dispose() {
+    _queueSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadBlockedDates() async {
@@ -355,9 +350,10 @@ class _BookingScreenState extends State<BookingScreen> {
   int? _parseTimeToHour(String? timeStr) {
     if (timeStr == null || timeStr.isEmpty) return null;
     try {
-      final parts = timeStr.split(':');
+      final english = _toEnglishDigits(timeStr);
+      final parts = english.split(':');
       if (parts.length >= 1) {
-        return int.tryParse(parts[0]);
+        return int.tryParse(parts[0].trim());
       }
     } catch (e) {
       print('خطأ في تحويل الوقت: $timeStr');
@@ -419,11 +415,20 @@ class _BookingScreenState extends State<BookingScreen> {
     final hasMorning = morning != null && morning.isNotEmpty;
     final hasEvening = evening != null && evening.isNotEmpty;
 
-    return hasMorning || hasEvening;
+    if (!isToday) return hasMorning || hasEvening;
+
+    // لليوم الحالي: يجب أن تكون هناك فترة واحدة على الأقل لم تنته بعد
+    final morningValid = hasMorning && _isPeriodValid(morning, 'morning');
+    final eveningValid = hasEvening && _isPeriodValid(evening, 'evening');
+    return morningValid || eveningValid;
   }
 
   // دالة جديدة لتحديد الفترة المناسبة بناءً على الوقت الحالي
   String? _getAppropriateShift(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final isToday = DateTime(date.year, date.month, date.day).isAtSameMomentAs(today);
+
     final dayName = intl.DateFormat('EEEE', 'ar').format(date).trim();
     final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
 
@@ -435,14 +440,14 @@ class _BookingScreenState extends State<BookingScreen> {
     final hasMorning = morning != null && morning.isNotEmpty;
     final hasEvening = evening != null && evening.isNotEmpty;
 
-    // نطبق منطق الغد فقط: إن كانت فترة واحدة أعدها، وإن كانت فترتان اترك الاختيار للمستخدم
-    if (hasMorning && !hasEvening) {
-      return 'morning';
-    } else if (!hasMorning && hasEvening) {
-      return 'evening';
-    } else if (hasMorning && hasEvening) {
-      return null;
-    }
+    // لليوم الحالي: تحقق من أن الفترة لم تنته
+    final morningValid = hasMorning && (!isToday || _isPeriodValid(morning, 'morning'));
+    final eveningValid = hasEvening && (!isToday || _isPeriodValid(evening, 'evening'));
+
+    if (morningValid && !eveningValid) return 'morning';
+    if (!morningValid && eveningValid) return 'evening';
+    // فترتان متاحتان → اترك المستخدم يختار (null)
+    if (morningValid && eveningValid) return null;
 
     return null;
   }
@@ -1138,6 +1143,9 @@ class _BookingScreenState extends State<BookingScreen> {
                             final isBookable =
                                 isDateBookable(date) &&
                                 !_isDoctorBookingDisabled();
+                            final nowDay = DateTime.now();
+                            final todayDate = DateTime(nowDay.year, nowDay.month, nowDay.day);
+                            final isDateToday = DateTime(date.year, date.month, date.day).isAtSameMomentAs(todayDate);
 
                             return Column(
                               children: [
@@ -1182,21 +1190,36 @@ class _BookingScreenState extends State<BookingScreen> {
                                           isBookable
                                               ? (isSelected
                                                   ? Icons.check_circle
-                                                  : Icons
-                                                      .radio_button_unchecked)
-                                              : Icons.block,
-                                          color:
-                                              isBookable
-                                                  ? (isSelected
-                                                      ? Colors.blue
-                                                      : Colors.grey)
-                                                  : Colors.red,
+                                                  : Icons.radio_button_unchecked)
+                                              : (!isBookable && isDateToday
+                                                  ? Icons.lock
+                                                  : Icons.block),
+                                          color: isBookable
+                                              ? (isSelected ? Colors.blue : Colors.grey)
+                                              : Colors.red,
                                         ),
                                         SizedBox(width: 10),
                                         Expanded(
-                                          child: Text(
-                                            formatted,
-                                            style: TextStyle(fontSize: 16),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (isDateToday)
+                                                Text(
+                                                  'اليوم',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: isBookable
+                                                        ? const Color(0xFF2FBDAF)
+                                                        : Colors.red[400],
+                                                  ),
+                                                ),
+                                              Text(
+                                                formatted,
+                                                style: TextStyle(fontSize: 16),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                         // شارات صباح/مساء دائماً، وتحتها العدد عند التحديد
@@ -1496,46 +1519,53 @@ class _BookingScreenState extends State<BookingScreen> {
                                                 children: [
                                                   Column(
                                                     children: [
-                                                      ChoiceChip(
-                                                        label: Text(
-                                                          "الفترة الصباحية",
+                                                      if (isMorningValid)
+                                                        ChoiceChip(
+                                                          label: const Text("الفترة الصباحية"),
+                                                          selected: selectedShift == 'morning',
+                                                          onSelected: (_) {
+                                                            setState(() => selectedShift = 'morning');
+                                                            if (selectedDate != null) {
+                                                              _updateQueueInfo(selectedDate!);
+                                                            }
+                                                          },
+                                                        )
+                                                      else
+                                                        AbsorbPointer(
+                                                          child: Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                            decoration: BoxDecoration(
+                                                              color: Colors.red[50],
+                                                              borderRadius: BorderRadius.circular(8),
+                                                              border: Border.all(color: Colors.red[300]!),
+                                                            ),
+                                                            child: Row(
+                                                              mainAxisSize: MainAxisSize.min,
+                                                              children: [
+                                                                Icon(Icons.lock, size: 14, color: Colors.red[400]),
+                                                                const SizedBox(width: 6),
+                                                                Text(
+                                                                  "الفترة الصباحية",
+                                                                  style: TextStyle(
+                                                                    color: Colors.red[400],
+                                                                    fontSize: 13,
+                                                                    decoration: TextDecoration.lineThrough,
+                                                                    decorationColor: Colors.red[400],
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
                                                         ),
-                                                        selected:
-                                                            selectedShift ==
-                                                            'morning',
-                                                        onSelected:
-                                                            isMorningValid
-                                                                ? (_) {
-                                                                  setState(
-                                                                    () =>
-                                                                        selectedShift =
-                                                                            'morning',
-                                                                  );
-                                                                  if (selectedDate !=
-                                                                      null) {
-                                                                    _updateQueueInfo(
-                                                                      selectedDate!,
-                                                                    );
-                                                                  }
-                                                                }
-                                                                : null,
-                                                      ),
                                                       if (!isMorningValid)
                                                         Padding(
-                                                          padding:
-                                                              const EdgeInsets.only(
-                                                                top: 4,
-                                                              ),
+                                                          padding: const EdgeInsets.only(top: 4),
                                                           child: Text(
-                                                            'انتهى زمن الحجز لهذه الفترة',
+                                                            'انتهت هذه الفترة',
                                                             style: TextStyle(
-                                                              color:
-                                                                  Colors
-                                                                      .red[600],
+                                                              color: Colors.red[400],
                                                               fontSize: 10,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w500,
+                                                              fontWeight: FontWeight.w500,
                                                             ),
                                                           ),
                                                         ),
@@ -1544,46 +1574,53 @@ class _BookingScreenState extends State<BookingScreen> {
                                                   const SizedBox(width: 10),
                                                   Column(
                                                     children: [
-                                                      ChoiceChip(
-                                                        label: Text(
-                                                          "الفترة المسائية",
+                                                      if (isEveningValid)
+                                                        ChoiceChip(
+                                                          label: const Text("الفترة المسائية"),
+                                                          selected: selectedShift == 'evening',
+                                                          onSelected: (_) {
+                                                            setState(() => selectedShift = 'evening');
+                                                            if (selectedDate != null) {
+                                                              _updateQueueInfo(selectedDate!);
+                                                            }
+                                                          },
+                                                        )
+                                                      else
+                                                        AbsorbPointer(
+                                                          child: Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                            decoration: BoxDecoration(
+                                                              color: Colors.red[50],
+                                                              borderRadius: BorderRadius.circular(8),
+                                                              border: Border.all(color: Colors.red[300]!),
+                                                            ),
+                                                            child: Row(
+                                                              mainAxisSize: MainAxisSize.min,
+                                                              children: [
+                                                                Icon(Icons.lock, size: 14, color: Colors.red[400]),
+                                                                const SizedBox(width: 6),
+                                                                Text(
+                                                                  "الفترة المسائية",
+                                                                  style: TextStyle(
+                                                                    color: Colors.red[400],
+                                                                    fontSize: 13,
+                                                                    decoration: TextDecoration.lineThrough,
+                                                                    decorationColor: Colors.red[400],
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
                                                         ),
-                                                        selected:
-                                                            selectedShift ==
-                                                            'evening',
-                                                        onSelected:
-                                                            isEveningValid
-                                                                ? (_) {
-                                                                  setState(
-                                                                    () =>
-                                                                        selectedShift =
-                                                                            'evening',
-                                                                  );
-                                                                  if (selectedDate !=
-                                                                      null) {
-                                                                    _updateQueueInfo(
-                                                                      selectedDate!,
-                                                                    );
-                                                                  }
-                                                                }
-                                                                : null,
-                                                      ),
                                                       if (!isEveningValid)
                                                         Padding(
-                                                          padding:
-                                                              const EdgeInsets.only(
-                                                                top: 4,
-                                                              ),
+                                                          padding: const EdgeInsets.only(top: 4),
                                                           child: Text(
-                                                            'انتهى زمن الحجز لهذه الفترة',
+                                                            'انتهت هذه الفترة',
                                                             style: TextStyle(
-                                                              color:
-                                                                  Colors
-                                                                      .red[600],
+                                                              color: Colors.red[400],
                                                               fontSize: 10,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w500,
+                                                              fontWeight: FontWeight.w500,
                                                             ),
                                                           ),
                                                         ),

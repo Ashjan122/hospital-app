@@ -42,6 +42,9 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
 
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
+  final FocusNode _nameFocus = FocusNode();
+  final FocusNode _phoneFocus = FocusNode();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
   String? facilityName;
   String? specializationName;
@@ -53,12 +56,17 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     _nameController = TextEditingController();
     _phoneController = TextEditingController();
     _loadFacilityData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusScope.of(context).requestFocus(_nameFocus);
+    });
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
+    _nameFocus.dispose();
+    _phoneFocus.dispose();
     super.dispose();
   }
 
@@ -123,35 +131,10 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     }
   }
 
-  Future<Set<String>> getBookedTimes(DateTime date) async {
-    final dateStr = intl.DateFormat('yyyy-MM-dd').format(date);
-    final snapshot =
-        await FirebaseFirestore.instance
-            .collection('medicalFacilities')
-            .doc(widget.facilityId)
-            .collection('specializations')
-            .doc(widget.specializationId)
-            .collection('doctors')
-            .doc(widget.doctorId)
-            .collection('appointments')
-            .where('date', isEqualTo: dateStr)
-            .get();
-
-    return snapshot.docs.map((doc) => doc['time'] as String).toSet();
-  }
-
   Future<Map<String, String>?> getAvailableTime(DateTime date) async {
-    final bookedTimes = await getBookedTimes(date);
-    final now = DateTime.now();
-    final dayName = intl.DateFormat('EEEE', 'ar').format(date).trim();
-    final schedule = widget.workingSchedule[dayName];
     final shiftKey = widget.selectedShift ?? 'morning';
-    final shiftData = schedule[shiftKey];
-    
-    if (shiftData == null) return null;
-
-    // فحص عدد المرضى المحجوزين في هذا اليوم والفترة
     final dateStr = intl.DateFormat('yyyy-MM-dd').format(date);
+
     final shiftBookings = await FirebaseFirestore.instance
         .collection('medicalFacilities')
         .doc(widget.facilityId)
@@ -164,7 +147,6 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         .where('period', isEqualTo: shiftKey)
         .get();
 
-    // الحصول على حد المرضى للطبيب
     final doctorDoc = await FirebaseFirestore.instance
         .collection('medicalFacilities')
         .doc(widget.facilityId)
@@ -175,41 +157,19 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         .get();
 
     final doctorData = doctorDoc.data();
-    final patientLimit = shiftKey == 'morning' 
+    final patientLimit = shiftKey == 'morning'
         ? (doctorData?['morningPatientLimit'] ?? 20)
         : (doctorData?['eveningPatientLimit'] ?? 20);
 
-    // فحص إذا كان العدد قد اكتمل
-    if (shiftBookings.docs.length >= patientLimit) {
-      return null; // لا توجد مواعيد متاحة
+    final activeBookings = shiftBookings.docs
+        .where((doc) => doc.data()['status'] != 'canceled')
+        .length;
+
+    if (activeBookings >= patientLimit) {
+      return null;
     }
 
-    // تحويل الوقت من 12 ساعة إلى 24 ساعة
-    int startHour = int.parse(shiftData['start'].split(":")[0]);
-    int endHour = int.parse(shiftData['end'].split(":")[0]);
-    
-    // إذا كان وقت النهاية أقل من وقت البداية، فهذا يعني أنه بعد الظهر
-    if (endHour < startHour) {
-      endHour += 12; // تحويل إلى 24 ساعة
-    }
-
-    for (int hour = startHour; hour <= endHour; hour++) {
-      for (String suffix in [":00", ":30"]) {
-        final timeStr = '${hour.toString().padLeft(2, '0')}$suffix';
-        final timeObj = DateTime(
-          date.year,
-          date.month,
-          date.day,
-          hour,
-          suffix == ":30" ? 30 : 0,
-        );
-        if (date.day == now.day && timeObj.isBefore(now)) continue;
-        if (!bookedTimes.contains(timeStr)) {
-          return {'time': timeStr, 'period': shiftKey};
-        }
-      }
-    }
-    return null;
+    return {'time': '', 'period': shiftKey};
   }
 
   Future<void> confirmBooking() async {
@@ -237,10 +197,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     
     // التحقق من رقم الهاتف (يجب أن يحتوي على أرقام فقط)
     String phoneDigits = patientPhone!.replaceAll(RegExp(r'[^0-9]'), '');
-    if (phoneDigits.isEmpty) {
-      _showDialog("تنبيه", "يرجى إدخال رقم هاتف صحيح");
-      return;
-    }
+    if (phoneDigits.length < 10) return;
 
     // التحقق من عدم وجود حجز سابق لنفس الشخص في نفس اليوم (بالاسم الثلاثي فقط)
     final checkDateStr = intl.DateFormat('yyyy-MM-dd').format(widget.selectedDate);
@@ -348,13 +305,14 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         .add({
           'patientName': patientName,
           'patientPhone': patientPhone,
-          'patientId': patientId, // Save patient ID instead of phone
-
+          'patientId': patientId,
           'date': dateStr,
           'time': availableTime,
           'period': period,
           'createdAt': FieldValue.serverTimestamp(),
-          'isConfirmed': false, // الحجز الجديد يحتاج تأكيد
+          'isConfirmed': false,
+          'createdById': patientId,
+          'createdByName': 'by App',
         });
     
     final bookingId = bookingDocRef.id;
@@ -378,6 +336,8 @@ await FirebaseFirestore.instance
       'period': period,
       'createdAt': FieldValue.serverTimestamp(),
       'isConfirmed': false,
+      'createdById': patientId,
+      'createdByName': 'by App',
 });
 
 
@@ -632,7 +592,9 @@ await FirebaseFirestore.instance
               ? const Center(child: CircularProgressIndicator())
               : Padding(
                   padding: const EdgeInsets.all(20.0),
-                  child: Column(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
                     children: [
                         // حقل الاسم
                         TextFormField(
@@ -646,6 +608,9 @@ await FirebaseFirestore.instance
                             ),
                             labelStyle: TextStyle(color: const Color(0xFF2FBDAF)),
                           ),
+                          focusNode: _nameFocus,
+                          textInputAction: TextInputAction.next,
+                          onFieldSubmitted: (_) => FocusScope.of(context).requestFocus(_phoneFocus),
                           onChanged: (val) => patientName = val,
                           textDirection: TextDirection.rtl,
                           controller: _nameController,
@@ -653,23 +618,20 @@ await FirebaseFirestore.instance
                             if (value == null || value.isEmpty) {
                               return 'يرجى إدخال الاسم';
                             }
-                            
                             List<String> nameParts = value.trim().split(' ').where((part) => part.isNotEmpty).toList();
-                            
                             if (nameParts.length < 2) {
                               return 'يرجى إدخال الاسم (اسمين على الأقل)';
                             }
-                            
                             return null;
                           },
                         ),
                         const SizedBox(height: 16),
-                        
+
                         // حقل رقم الهاتف
                         TextFormField(
                           decoration: InputDecoration(
                             labelText: 'رقم الهاتف *',
-                            hintText: 'أدخل رقم الهاتف',
+                            hintText: 'أدخل رقم الهاتف (10 أرقام على الأقل)',
                             border: OutlineInputBorder(),
                             prefixIcon: Icon(Icons.phone, color: const Color(0xFF2FBDAF)),
                             focusedBorder: OutlineInputBorder(
@@ -677,20 +639,20 @@ await FirebaseFirestore.instance
                             ),
                             labelStyle: TextStyle(color: const Color(0xFF2FBDAF)),
                           ),
+                          focusNode: _phoneFocus,
+                          textInputAction: TextInputAction.done,
                           onChanged: (val) => patientPhone = val,
                           keyboardType: TextInputType.phone,
-                          textDirection: TextDirection.rtl,
+                          textDirection: TextDirection.ltr,
                           controller: _phoneController,
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return 'يرجى إدخال رقم الهاتف';
                             }
-                            
                             String phoneDigits = value.replaceAll(RegExp(r'[^0-9]'), '');
-                            if (phoneDigits.isEmpty) {
-                              return 'يرجى إدخال رقم هاتف صحيح';
+                            if (phoneDigits.length < 10) {
+                              return 'رقم الهاتف يجب أن يكون 10 أرقام على الأقل';
                             }
-                            
                             return null;
                           },
                         ),
@@ -703,7 +665,11 @@ await FirebaseFirestore.instance
                           width: double.infinity,
                           height: 60,
                           child: OutlinedButton(
-                        onPressed: confirmBooking,
+                        onPressed: () {
+                              if (_formKey.currentState!.validate()) {
+                                confirmBooking();
+                              }
+                            },
                             style: OutlinedButton.styleFrom(
                               side: BorderSide(
                                 color: const Color(0xFF2FBDAF),
@@ -728,6 +694,7 @@ await FirebaseFirestore.instance
                         const SizedBox(height: 20),
 
                     ],
+                  ),
                   ),
                 ),
         ),

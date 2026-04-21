@@ -200,23 +200,7 @@ class SyncfusionPdfService {
       
       yPosition += 35;
       
-       // تحديد نص الحضور بناءً على وقت بداية الفترة
-       String attendanceText = '• يرجى الحضور قبل الموعد بـ 15 دقيقة';
-       print('=== معلومات PDF ===');
-       print('وقت بداية الفترة المستلم: $periodStartTime');
-       print('الفترة: $period');
-       print('التاريخ: $bookingDate');
-       print('الوقت: $bookingTime');
-       
-       if (periodStartTime != null && periodStartTime.isNotEmpty) {
-         attendanceText = '• يرجى الحضور الساعة $periodStartTime';
-         print('تم تحديث نص الحضور إلى: $attendanceText');
-       } else {
-         print('لم يتم العثور على وقت بداية الفترة من جدول الطبيب؛ سيتم استخدام نص عام بدون وقت محدد');
-       }
-       
        List<String> notes = [
-         attendanceText,
          '• في حالة التأخير سيتم الغاء الحجز تلقائيا',
          '• إحضار التقارير الطبية السابقة إن وجدت',
          '• في حالة عدم الرغبة في الحضور يرجى إلغاء الحجز',
@@ -473,23 +457,7 @@ class SyncfusionPdfService {
       
       yPosition += 35;
       
-       // تحديد نص الحضور بناءً على وقت بداية الفترة
-       String attendanceText = '• يرجى الحضور قبل الموعد بـ 15 دقيقة';
-       print('=== معلومات PDF ===');
-       print('وقت بداية الفترة المستلم: $periodStartTime');
-       print('الفترة: $period');
-       print('التاريخ: $bookingDate');
-       print('الوقت: $bookingTime');
-       
-       if (periodStartTime != null && periodStartTime.isNotEmpty) {
-         attendanceText = '• يرجى الحضور الساعة $periodStartTime';
-         print('تم تحديث نص الحضور إلى: $attendanceText');
-       } else {
-         print('لم يتم العثور على وقت بداية الفترة من جدول الطبيب؛ سيتم استخدام نص عام بدون وقت محدد');
-       }
-       
        List<String> notes = [
-         attendanceText,
          '• في حالة التأخير سيتم الغاء الحجز تلقائيا',
          '• إحضار التقارير الطبية السابقة إن وجدت',
          '• في حالة عدم الرغبة في الحضور يرجى إلغاء الحجز',
