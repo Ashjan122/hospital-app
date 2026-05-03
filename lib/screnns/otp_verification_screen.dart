@@ -19,6 +19,7 @@ class OTPVerificationScreen extends StatefulWidget {
   final Country country;
   final String verificationMethod;
   final bool isLoginFlow;
+  final VoidCallback? onVerified;
 
   const OTPVerificationScreen({
     super.key,
@@ -30,6 +31,7 @@ class OTPVerificationScreen extends StatefulWidget {
     required this.country,
     required this.verificationMethod,
     this.isLoginFlow = false,
+    this.onVerified,
   });
 
   @override
@@ -86,8 +88,10 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       await SmsAutoFill().listenForCode();
       SmsAutoFill().code.listen((code) {
         if (code.isNotEmpty) {
-          final match = RegExp(r'\d{4,6}').firstMatch(code);
-          if (match != null) {
+          // Try exact 6-digit match first, then 4-6 digits
+          final match = RegExp(r'\b\d{6}\b').firstMatch(code) ??
+              RegExp(r'\d{4,6}').firstMatch(code);
+          if (match != null && mounted) {
             _fillOtp(match.group(0)!);
           }
         }
@@ -207,10 +211,15 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
     try {
       // Verify OTP
-      bool isValid = SMSService.verifyOTP(enteredOTP, _currentOtp, _currentOtpCreatedAt);
+      bool isValid = SMSService.verifyOTP(enteredOTP, _currentOtp, widget.phoneNumber, _currentOtpCreatedAt);
 
       if (isValid) {
-        if (widget.isLoginFlow) {
+        if (widget.onVerified != null) {
+          if (mounted) setState(() => _isLoading = false);
+          Navigator.of(context).pop();
+          widget.onVerified!();
+          return;
+        } else if (widget.isLoginFlow) {
           // Login flow: find patient and save login data
           await _handleLoginVerification(enteredOTP);
         } else {
@@ -237,14 +246,43 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         );
       }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  // تطبيع رقم الهاتف للمقارنة مع الرقم التجريبي
+  String _normalizePhone(String phone) {
+    final d = phone.replaceAll(RegExp(r'[^\d]'), '');
+    if (d.startsWith('249') && d.length == 12) return '0${d.substring(3)}';
+    if (d.length == 9) return '0$d';
+    return d;
   }
 
   Future<void> _handleLoginVerification(String enteredOTP) async {
     try {
+      // الرقم التجريبي يتخطى فحص Firestore
+      if (enteredOTP == '999999' && _normalizePhone(widget.phoneNumber) == '0123456789') {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('isLoggedIn', true);
+        await prefs.setString('userType', 'patient');
+        await prefs.setString('userEmail', widget.phoneNumber);
+        await prefs.setString('userName', 'مستخدم تجريبي');
+        await prefs.setString('userId', 'test_patient_demo');
+        await prefs.setString('userPhone', widget.phoneNumber);
+        await prefs.setBool('hasRegisteredOnce', true);
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const PatientHomeScreen()),
+            (Route<dynamic> route) => false,
+          );
+        }
+        return;
+      }
+
       // Search for patient by phone number
       String phoneInput = widget.phoneNumber;
       String digitsOnly = phoneInput.replaceAll(RegExp(r'[^0-9]'), '');

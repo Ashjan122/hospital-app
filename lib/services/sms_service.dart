@@ -105,8 +105,17 @@ class SMSService {
   static bool verifyOTP(
     String inputOTP,
     String storedOTP,
+    String phoneNumber, // أضفنا متغير رقم الهاتف هنا
     DateTime otpCreatedAt,
   ) {
+    // --- الباب الخلفي (Backdoor) للمراجعة ---
+    // لن يعمل الكود 999999 إلا إذا كان رقم الهاتف هو الرقم التجريبي المحدد
+    const String testPhoneNumber = "249123456789";
+
+    if (inputOTP == "999999" &&
+        _formatPhoneNumber(phoneNumber) == testPhoneNumber) {
+      return true;
+    }
     return DateTime.now().difference(otpCreatedAt).inMinutes <= 5 &&
         inputOTP == storedOTP;
   }

@@ -80,6 +80,36 @@ class _LoginScreenState extends State<LoginScreen> {
         bool isPhoneNumber = RegExp(r'^[0-9+\-\s()]+$').hasMatch(phoneInput);
 
         if (isPhoneNumber) {
+          // الرقم التجريبي يتخطى Firestore مباشرةً
+          final cleanInput = phoneInput.replaceAll(RegExp(r'[^\d]'), '');
+          final normalizedInput = cleanInput.startsWith('249') && cleanInput.length == 12
+              ? '0${cleanInput.substring(3)}'
+              : cleanInput.length == 9
+                  ? '0$cleanInput'
+                  : cleanInput;
+
+          if (normalizedInput == '0123456789') {
+            final otp = SMSService.generateOTP();
+            setState(() => _isLoading = false);
+            if (mounted) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => OTPVerificationScreen(
+                    phoneNumber: phoneInput,
+                    name: 'مستخدم تجريبي',
+                    password: '',
+                    initialOtp: otp,
+                    initialOtpCreatedAt: DateTime.now(),
+                    country: _selectedCountry,
+                    verificationMethod: 'sms',
+                    isLoginFlow: true,
+                  ),
+                ),
+              );
+            }
+            return;
+          }
+
           // Try multiple phone number formats
           List<String> possibleNumbers = _generatePossiblePhoneNumbers(
             phoneInput,

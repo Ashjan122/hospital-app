@@ -229,6 +229,7 @@ class _SMSExampleState extends State<SMSExample> {
     bool isValid = SMSService.verifyOTP(
       _otpController.text,
       _generatedOTP!,
+      _phoneController.text,
       _otpCreatedAt!,
     );
 

@@ -86,8 +86,13 @@ class _HospitalScreenState extends State<HospitalScreen> {
         return [];
       }
 
-      // ترتيب المرافق محلياً - المراكز المفعلة فقط
-      final sortedDocs = List<QueryDocumentSnapshot>.from(snapshot.docs);
+      // الاحتفاظ بالمراكز المفعلة فقط
+      final sortedDocs = List<QueryDocumentSnapshot>.from(
+        snapshot.docs.where((doc) {
+          final data = doc.data();
+          return data['available'] == true;
+        }),
+      );
 
       try {
         sortedDocs.sort((a, b) {

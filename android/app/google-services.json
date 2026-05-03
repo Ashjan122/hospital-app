@@ -7,12 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:340060147561:android:647fd7cdf67e40bcdc77f8",
+        "mobilesdk_app_id": "1:340060147561:android:1aaf62b35e0494fbdc77f8",
         "android_client_info": {
-          "package_name": "com.example.hospital_app"
+          "package_name": "com.example.hospital_admin_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAB3HnHhPATbDp_gDIJVsAQ79N0cf8F68U"
@@ -20,7 +25,179 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "340060147561-74gc7ikkr56tbd8lfhm3b587b358g5u3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.labToLabAdmin"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:340060147561:android:647fd7cdf67e40bcdc77f8",
+        "android_client_info": {
+          "package_name": "com.example.hospital_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "340060147561-41l1vh0uqe6fe7ti8o7hi4hvb8c4uirg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.hospital_app",
+            "certificate_hash": "7d049c1df256be13acdaf7f381c640c509c9b22d"
+          }
+        },
+        {
+          "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB3HnHhPATbDp_gDIJVsAQ79N0cf8F68U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "340060147561-74gc7ikkr56tbd8lfhm3b587b358g5u3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.labToLabAdmin"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:340060147561:android:279b21f8c909e25adc77f8",
+        "android_client_info": {
+          "package_name": "com.example.jawda_his"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB3HnHhPATbDp_gDIJVsAQ79N0cf8F68U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "340060147561-74gc7ikkr56tbd8lfhm3b587b358g5u3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.labToLabAdmin"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:340060147561:android:f4497e7c73de8bfcdc77f8",
+        "android_client_info": {
+          "package_name": "com.example.lab_to_lab_admin"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB3HnHhPATbDp_gDIJVsAQ79N0cf8F68U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "340060147561-74gc7ikkr56tbd8lfhm3b587b358g5u3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.labToLabAdmin"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:340060147561:android:ef121f797241d291dc77f8",
+        "android_client_info": {
+          "package_name": "com.jawda.appp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "340060147561-elbs5ot4bm9dtrcvabpo2uvcivklctdh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jawda.appp",
+            "certificate_hash": "f9f7300a08c23d64cbe198d69ceda8196d92289c"
+          }
+        },
+        {
+          "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB3HnHhPATbDp_gDIJVsAQ79N0cf8F68U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "340060147561-74gc7ikkr56tbd8lfhm3b587b358g5u3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.labToLabAdmin"
+              }
+            }
+          ]
         }
       }
     }

@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:hospital_app/services/sms_service.dart';
+import 'package:hospital_app/services/whatsapp_service.dart';
 import 'package:hospital_app/screnns/patient_bookings_screen.dart';
 import 'dart:io';
 
@@ -60,14 +61,30 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
   }
 
   Future<void> _sendNotifications() async {
+    final dayName = intl.DateFormat('EEEE', 'ar').format(widget.bookingDate);
+    final formattedDate = intl.DateFormat('yyyy-MM-dd').format(widget.bookingDate);
+    final periodText = widget.period == 'morning' ? 'صباحاً' : 'مساءً';
+
+    // SMS
     try {
       final message = _buildMessageBody();
       await SMSService.sendSimpleSMS(widget.patientPhone, message);
-    } catch (e) {
-      // تجاهل الأخطاء حتى لا تؤثر على تجربة المستخدم
-      // يمكن لاحقاً إضافة لوجيك لإعادة المحاولة
-      // print('Notification error: $e');
-    }
+    } catch (_) {}
+
+    // WhatsApp Cloud API template
+    try {
+      await WhatsAppService.sendBookingTemplate(
+        phoneNumber: widget.patientPhone,
+        facilityName: widget.facilityName,
+        patientName: widget.patientName,
+        doctorName: widget.doctorName,
+        specializationName: widget.specializationName,
+        dayName: dayName,
+        date: formattedDate,
+        period: periodText,
+        patientPhone: widget.patientPhone,
+      );
+    } catch (_) {}
   }
 
   @override

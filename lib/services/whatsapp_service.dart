@@ -195,6 +195,72 @@ class WhatsAppService {
     }
   }
 
+  // Send booking confirmation via WhatsApp Cloud API template
+  static Future<Map<String, dynamic>> sendBookingTemplate({
+    required String phoneNumber,
+    required String facilityName,
+    required String patientName,
+    required String doctorName,
+    required String specializationName,
+    required String dayName,
+    required String date,
+    required String period,
+    required String patientPhone,
+  }) async {
+    const String cloudApiToken =
+        'EAAapSj9k2sABRIVNLKtomho0lxjbXkH9JXm1Asgzosmz0x3nsOAlDdzRauNcJOgYNwUfXzRz5xCetT0SqgKZAeJZAD2h92NaUnrXWDOiFyjdZAaStoF1d36EPgwzAxZC6UmihhYyGZCyx2JdlDIBvpl2JTTvNFdTPYi215N0GiS2XhmoHULg9F6WK6iwd7ZBklXgZDZD';
+    const String phoneNumberId = '1151556284697196';
+    final String url =
+        'https://graph.facebook.com/v19.0/$phoneNumberId/messages';
+
+    final String to = phoneNumber.replaceAll(RegExp(r'[^\d]'), '').replaceFirst(RegExp(r'^0'), '249');
+
+    final Map<String, dynamic> body = {
+      'messaging_product': 'whatsapp',
+      'to': to,
+      'type': 'template',
+      'template': {
+        'name': 'booking_message',
+        'language': {'code': 'ar'},
+        'components': [
+          {
+            'type': 'body',
+            'parameters': [
+              {'type': 'text', 'text': facilityName},
+              {'type': 'text', 'text': patientName},
+              {'type': 'text', 'text': doctorName},
+              {'type': 'text', 'text': specializationName},
+              {'type': 'text', 'text': dayName},
+              {'type': 'text', 'text': date},
+              {'type': 'text', 'text': period},
+              {'type': 'text', 'text': patientPhone},
+            ],
+          },
+        ],
+      },
+    };
+
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $cloudApiToken',
+        },
+        body: jsonEncode(body),
+      );
+      print('📲 WhatsApp Cloud API: ${response.statusCode} - ${response.body}');
+      return {
+        'success': response.statusCode == 200,
+        'statusCode': response.statusCode,
+        'response': response.body,
+      };
+    } catch (e) {
+      print('❌ خطأ في إرسال قالب واتساب: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
   // Test WhatsApp API connection
   static Future<Map<String, dynamic>> testConnection() async {
     try {
