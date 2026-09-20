@@ -1,15 +1,18 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart' as intl;
-import 'package:path_provider/path_provider.dart';
-import 'package:open_file/open_file.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:hospital_app/screnns/patient_bookings_screen.dart';
 import 'package:hospital_app/services/sms_service.dart';
 import 'package:hospital_app/services/whatsapp_service.dart';
-import 'package:hospital_app/screnns/patient_bookings_screen.dart';
-import 'dart:io';
+import 'package:intl/intl.dart' as intl;
+import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 class BookingSuccessScreen extends StatefulWidget {
   final String bookingId;
+  final String bookingNumber;
+  final String bookingStatus;
   final String patientName;
   final String patientPhone;
   final DateTime bookingDate;
@@ -23,6 +26,8 @@ class BookingSuccessScreen extends StatefulWidget {
   const BookingSuccessScreen({
     super.key,
     required this.bookingId,
+    required this.bookingNumber,
+    required this.bookingStatus,
     required this.patientName,
     required this.patientPhone,
     required this.bookingDate,
@@ -55,14 +60,21 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
 
   String _buildMessageBody() {
     final dayName = intl.DateFormat('EEEE', 'ar').format(widget.bookingDate);
-    final formattedDate = intl.DateFormat('yyyy-MM-dd').format(widget.bookingDate);
+    final formattedDate = intl.DateFormat(
+      'yyyy-MM-dd',
+    ).format(widget.bookingDate);
     final periodText = widget.period == 'morning' ? 'صباحاً' : 'مساءً';
     return 'تطبيق جودة الطبي\n\nتم حجز موعد بنجاح\n\nاسم المركز: ${widget.facilityName}\nاسم المريض: ${widget.patientName}\nرقم الهاتف: ${widget.patientPhone}\nالطبيب: ${widget.doctorName} (${widget.specializationName})\nموعد الحجز: $dayName - $formattedDate - $periodText\n\nشكراً لاختياركم تطبيق جودة الطبي';
   }
 
   Future<void> _sendNotifications() async {
+    if (widget.bookingStatus != 'confirmed') {
+      return;
+    }
     final dayName = intl.DateFormat('EEEE', 'ar').format(widget.bookingDate);
-    final formattedDate = intl.DateFormat('yyyy-MM-dd').format(widget.bookingDate);
+    final formattedDate = intl.DateFormat(
+      'yyyy-MM-dd',
+    ).format(widget.bookingDate);
     final periodText = widget.period == 'morning' ? 'صباحاً' : 'مساءً';
 
     // SMS
@@ -90,21 +102,15 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
   @override
   Widget build(BuildContext context) {
     final dayName = intl.DateFormat('EEEE', 'ar').format(widget.bookingDate);
-    final formattedDate = intl.DateFormat('yyyy-MM-dd').format(widget.bookingDate);
+    final formattedDate = intl.DateFormat(
+      'yyyy-MM-dd',
+    ).format(widget.bookingDate);
     final periodText = widget.period == 'morning' ? 'صباحاً' : 'مساءً';
 
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            'تم الحجز بنجاح',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: const Color(0xFF2FBDAF),
-              fontSize: 24,
-            ),
-          ),
           backgroundColor: Colors.white,
           elevation: 0,
           automaticallyImplyLeading: false,
@@ -115,10 +121,7 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [
-                Colors.white,
-                Colors.grey[50]!,
-              ],
+              colors: [Colors.white, Colors.grey[50]!],
             ),
           ),
           child: SafeArea(
@@ -131,25 +134,32 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
                     width: 84,
                     height: 84,
                     decoration: BoxDecoration(
-                      color: Colors.green[50],
+                      color:
+                          widget.bookingStatus == 'pending'
+                              ? Colors.orange[50]
+                              : Colors.green[50],
                       shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.green[300]!,
-                        width: 2,
-                      ),
+                      border: Border.all(color: Colors.green[300]!, width: 2),
                     ),
                     child: Icon(
-                      Icons.check_circle,
+                      widget.bookingStatus == 'pending'
+                          ? Icons.hourglass_top
+                          : Icons.check_circle,
                       size: 56,
-                      color: Colors.green[600],
+                      color:
+                          widget.bookingStatus == 'pending'
+                              ? Colors.orange[600]
+                              : Colors.green[600],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 12),
-                  
+
                   // عنوان النجاح
                   Text(
-                    'تم الحجز بنجاح',
+                    widget.bookingStatus == 'pending'
+                        ? 'تم إرسال طلب الحجز'
+                        : 'تم الحجز بنجاح',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -157,9 +167,21 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  
+                  if (widget.bookingStatus == 'pending') ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'الحجز في انتظار تأكيد الإدارة',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: Colors.orange[700],
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+
                   const SizedBox(height: 16),
-                  
+
                   // بطاقة تفاصيل الحجز
                   Container(
                     width: double.infinity,
@@ -189,53 +211,58 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
                             color: const Color(0xFF2FBDAF),
                           ),
                         ),
-                        
+
                         const SizedBox(height: 12),
-                        
+                        // رقم الحجز
+                        _buildDetailRow(
+                          icon: Icons.confirmation_number_outlined,
+                          label: 'كود الحجز',
+                          value: widget.bookingNumber,
+                        ),
+                        const SizedBox(height: 10),
+
                         // المركز أولاً
                         _buildDetailRow(
                           icon: Icons.business,
                           label: 'اسم المركز',
                           value: widget.facilityName,
                         ),
-                        
+
                         const SizedBox(height: 10),
-                        
+
                         // اسم المريض
                         _buildDetailRow(
                           icon: Icons.person,
                           label: 'اسم المريض',
                           value: widget.patientName,
                         ),
-                        
+
                         const SizedBox(height: 10),
-                        
+
                         // رقم الهاتف
                         _buildDetailRow(
                           icon: Icons.phone,
                           label: 'رقم الهاتف',
                           value: widget.patientPhone,
                         ),
-                        
+
                         const SizedBox(height: 10),
-                        
+
                         // الطبيب (التخصص بين قوسين)
                         _buildDetailRow(
                           icon: Icons.person_outline,
                           label: 'الطبيب',
-                          value: '${widget.doctorName} (${widget.specializationName})',
+                          value:
+                              '${widget.doctorName} (${widget.specializationName})',
                         ),
-                        
+
                         const SizedBox(height: 12),
-                        
+
                         // خط فاصل
-                        Container(
-                          height: 1,
-                          color: Colors.grey[200],
-                        ),
-                        
+                        Container(height: 1, color: Colors.grey[200]),
+
                         const SizedBox(height: 12),
-                        
+
                         // عنوان وقت الحجز بدون أيقونة
                         Text(
                           'وقت الحجز',
@@ -255,46 +282,54 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
                             color: Colors.orange[700],
                           ),
                         ),
-                        
+
                         const SizedBox(height: 12),
-                        
+
                         // تم إلغاء عرض معرف الحجز حسب الطلب
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // زرّان: PDF وموافق
                   Row(
                     children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _showPdfOptions(context),
-                          icon: Icon(Icons.picture_as_pdf, color: Colors.white, size: 20),
-                          label: Text(
-                            'PDF',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                      if (widget.bookingStatus == 'confirmed') ...[
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _showPdfOptions(context),
+                            icon: const Icon(
+                              Icons.picture_as_pdf,
+                              color: Colors.white,
+                              size: 20,
                             ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2FBDAF),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            label: const Text(
+                              'PDF',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                            elevation: 2,
-                            minimumSize: const Size.fromHeight(48),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2FBDAF),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 2,
+                              minimumSize: const Size.fromHeight(48),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
+                        const SizedBox(width: 12),
+                      ],
+
                       Expanded(
                         child: ElevatedButton(
                           onPressed: () {
                             PatientBookingsScreen.clearBookingsCache();
+
                             Navigator.of(context).pushAndRemoveUntil(
                               MaterialPageRoute(
                                 builder: (_) => const PatientBookingsScreen(),
@@ -321,7 +356,7 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 8),
                 ],
               ),
@@ -374,11 +409,11 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
       // البحث عن ملف PDF المحفوظ
       final tempDir = await getTemporaryDirectory();
       final pdfFile = File('${tempDir.path}/booking_${widget.bookingId}.pdf');
-      
+
       if (await pdfFile.exists()) {
         // فتح ملف PDF باستخدام open_file
         await OpenFile.open(pdfFile.path);
-        
+
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -415,13 +450,12 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
       // البحث عن ملف PDF المحفوظ
       final tempDir = await getTemporaryDirectory();
       final pdfFile = File('${tempDir.path}/booking_${widget.bookingId}.pdf');
-      
+
       if (await pdfFile.exists()) {
         // مشاركة ملف PDF
-        await Share.shareXFiles(
-          [XFile(pdfFile.path)],
-          text: 'حجز طبي - ${widget.patientName}',
-        );
+        await Share.shareXFiles([
+          XFile(pdfFile.path),
+        ], text: 'حجز طبي - ${widget.patientName}');
       } else {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -471,14 +505,14 @@ class _BookingSuccessScreenState extends State<BookingSuccessScreen> {
                   const SizedBox(height: 12),
                   Text(
                     'خيارات PDF',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
                   ListTile(
-                    leading: Icon(Icons.download, color: const Color(0xFF2FBDAF)),
+                    leading: Icon(
+                      Icons.download,
+                      color: const Color(0xFF2FBDAF),
+                    ),
                     title: const Text(' فتح'),
                     onTap: () async {
                       Navigator.pop(ctx);

@@ -16,7 +16,7 @@ plugins {
 }
 
 android {
-    namespace = "com.jawda.appp"
+    namespace = "jawda.oman.com"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
 
@@ -32,7 +32,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.jawda.appp"
+        applicationId = "jawda.oman.com"
         minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

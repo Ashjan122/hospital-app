@@ -1,16 +1,16 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:hospital_app/models/country.dart';
+import 'package:hospital_app/screnns/otp_verification_screen.dart';
 import 'package:hospital_app/screnns/patient_home_screen.dart';
 import 'package:hospital_app/screnns/register_screen.dart';
-import 'package:hospital_app/services/sms_service.dart';
 import 'package:hospital_app/services/google_auth_service.dart';
-import 'package:hospital_app/screnns/otp_verification_screen.dart';
-import 'package:hospital_app/models/country.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hospital_app/services/sms_service.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:package_info_plus/package_info_plus.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -82,9 +82,10 @@ class _LoginScreenState extends State<LoginScreen> {
         if (isPhoneNumber) {
           // الرقم التجريبي يتخطى Firestore مباشرةً
           final cleanInput = phoneInput.replaceAll(RegExp(r'[^\d]'), '');
-          final normalizedInput = cleanInput.startsWith('249') && cleanInput.length == 12
-              ? '0${cleanInput.substring(3)}'
-              : cleanInput.length == 9
+          final normalizedInput =
+              cleanInput.startsWith('249') && cleanInput.length == 12
+                  ? '0${cleanInput.substring(3)}'
+                  : cleanInput.length == 9
                   ? '0$cleanInput'
                   : cleanInput;
 
@@ -94,16 +95,17 @@ class _LoginScreenState extends State<LoginScreen> {
             if (mounted) {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) => OTPVerificationScreen(
-                    phoneNumber: phoneInput,
-                    name: 'مستخدم تجريبي',
-                    password: '',
-                    initialOtp: otp,
-                    initialOtpCreatedAt: DateTime.now(),
-                    country: _selectedCountry,
-                    verificationMethod: 'sms',
-                    isLoginFlow: true,
-                  ),
+                  builder:
+                      (context) => OTPVerificationScreen(
+                        phoneNumber: phoneInput,
+                        name: 'مستخدم تجريبي',
+                        password: '',
+                        initialOtp: otp,
+                        initialOtpCreatedAt: DateTime.now(),
+                        country: _selectedCountry,
+                        verificationMethod: 'sms',
+                        isLoginFlow: true,
+                      ),
                 ),
               );
             }
@@ -138,6 +140,22 @@ class _LoginScreenState extends State<LoginScreen> {
           if (found && foundPatient != null) {
             final patientData = foundPatient.data() as Map<String, dynamic>;
             final patientName = patientData['name'] ?? 'مريض عزيز';
+            if (patientData['isActive'] == false) {
+              setState(() {
+                _isLoading = false;
+              });
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'حسابك غير مفعل حاليًا، يرجى التواصل مع الإدارة.',
+                  ),
+                  backgroundColor: Colors.red,
+                ),
+              );
+
+              return;
+            }
             final normalizedPhone = foundPhoneNumber!;
 
             // Send OTP via SMS
@@ -546,10 +564,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             const Expanded(child: Divider()),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
                               child: Text(
                                 'أو',
-                                style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
                             const Expanded(child: Divider()),

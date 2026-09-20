@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/models/country.dart';
 import 'package:hospital_app/screnns/otp_verification_screen.dart';
@@ -13,7 +14,13 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LabResultsScreen extends StatefulWidget {
-  const LabResultsScreen({super.key});
+  final String facilityId;
+  final String facilityName;
+  const LabResultsScreen({
+    super.key,
+    required this.facilityId,
+    required this.facilityName,
+  });
 
   @override
   State<LabResultsScreen> createState() => _LabResultsScreenState();
@@ -43,6 +50,32 @@ class _LabResultsScreenState extends State<LabResultsScreen> {
         _getPossiblePhoneFormats(saved).contains(entered);
   }
 
+  Future<void> _loadTargetCollection() async {
+    try {
+      final doc =
+          await FirebaseFirestore.instance
+              .collection('medicalFacilities')
+              .doc(widget.facilityId)
+              .get();
+
+      if (doc.exists) {
+        final data = doc.data();
+
+        if (mounted) {
+          setState(() {
+            _targetCollection = data?['targetCollection'];
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading targetCollection: $e');
+    }
+  }
+
+  final FirebaseFirestore _secondaryFirestore = FirebaseFirestore.instanceFor(
+    app: Firebase.app('secondaryApp'),
+  );
+  String? _targetCollection;
   @override
   void initState() {
     super.initState();
@@ -50,6 +83,7 @@ class _LabResultsScreenState extends State<LabResultsScreen> {
     _receiptFocusNode.addListener(_onReceiptFocusChanged);
     _phoneController.addListener(() => setState(() {}));
     _checkSavedPhone();
+    _loadTargetCollection();
   }
 
   @override
@@ -119,11 +153,18 @@ class _LabResultsScreenState extends State<LabResultsScreen> {
     });
 
     try {
+      if (_targetCollection == null || _targetCollection!.isEmpty) {
+        setState(() {
+          _errorMessage = 'لم يتم تحديد كولكشن نتائج المختبر لهذا المركز';
+          _isLoading = false;
+        });
+        return;
+      }
       final phoneFormats = _getPossiblePhoneFormats(phone);
 
       final snapshot =
-          await FirebaseFirestore.instance
-              .collection('alroomy_results')
+          await _secondaryFirestore
+              .collection(_targetCollection!)
               .where('patient_phone', whereIn: phoneFormats)
               .orderBy('created_at', descending: true)
               .get();
@@ -165,12 +206,18 @@ class _LabResultsScreenState extends State<LabResultsScreen> {
     });
 
     try {
+      if (_targetCollection == null || _targetCollection!.isEmpty) {
+        setState(() {
+          _errorMessage = 'لم يتم تحديد كولكشن نتائج المختبر لهذا المركز';
+          _isLoading = false;
+        });
+        return;
+      }
       final doc =
-          await FirebaseFirestore.instance
-              .collection('alroomy_results')
+          await _secondaryFirestore
+              .collection(_targetCollection!)
               .doc(receipt)
               .get();
-
       if (!doc.exists) {
         setState(() {
           _errorMessage = 'لم يتم العثور على نتائج بهذا الرقم';

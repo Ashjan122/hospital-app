@@ -9,6 +9,7 @@ import 'package:hospital_app/screnns/hospital_screen.dart';
 import 'package:hospital_app/screnns/login_screen.dart';
 import 'package:hospital_app/screnns/patient_bookings_screen.dart';
 import 'package:hospital_app/services/central_data_service.dart';
+import 'package:hospital_app/services/google_auth_service.dart';
 import 'package:hospital_app/services/presence_service.dart';
 import 'package:lottie/lottie.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -37,6 +38,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   List<String> _supportPhones = [];
   StreamSubscription? _supportPhonesSub;
   StreamSubscription<QuerySnapshot>? _bookingsSub;
+  StreamSubscription<DocumentSnapshot>? _patientStatusSub;
   String _appVersion = '';
 
   @override
@@ -48,6 +50,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     _searchController.addListener(_onSearchChanged);
     _checkDatabaseConnection();
     _initPresence();
+    _listenPatientStatus();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowAdDialog());
     // Warm up search cache to speed up the first search
     WidgetsBinding.instance.addPostFrameCallback((_) => _warmupSearchCache());
@@ -104,6 +107,49 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     }
   }
 
+  Future<void> _listenPatientStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final patientId = prefs.getString('userId') ?? '';
+
+      if (patientId.isEmpty) return;
+
+      _patientStatusSub?.cancel();
+
+      _patientStatusSub = FirebaseFirestore.instance
+          .collection('patients')
+          .doc(patientId)
+          .snapshots()
+          .listen((doc) async {
+            if (!doc.exists) return;
+
+            final data = doc.data() as Map<String, dynamic>?;
+
+            if (data?['isActive'] == false) {
+              await PresenceService.setOffline(patientId: patientId);
+              await GoogleAuthService.signOut();
+              await prefs.clear();
+
+              if (!mounted) return;
+
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('تم إيقاف حسابك، يرجى التواصل مع الإدارة.'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          });
+    } catch (e) {
+      print('خطأ في مراقبة حالة حساب المريض: $e');
+    }
+  }
+
   @override
   void dispose() {
     // Mark offline on screen dispose
@@ -115,6 +161,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     _debounceTimer?.cancel();
     _supportPhonesSub?.cancel();
     _bookingsSub?.cancel();
+    _patientStatusSub?.cancel();
     super.dispose();
   }
 
@@ -1425,6 +1472,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       final prefs = await SharedPreferences.getInstance();
                       final patientId = prefs.getString('userId') ?? '';
                       await PresenceService.setOffline(patientId: patientId);
+                      await GoogleAuthService.signOut();
                       await prefs.clear();
                       if (context.mounted) {
                         Navigator.of(context).pushAndRemoveUntil(

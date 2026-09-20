@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hospital_app/firebase_options.dart';
+import 'package:hospital_app/secondary_firebase_options.dart'; // 👈 أضفنا استيراد ملف الإعدادات الثاني فقط
 import 'package:hospital_app/screnns/login_screen.dart';
 import 'package:hospital_app/screnns/maintenance_screen.dart';
 import 'package:hospital_app/screnns/patient_home_screen.dart';
@@ -51,7 +52,15 @@ class AppStatusService {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // المشروع الأول (كما هو دون تغيير)
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // 👈 السطر الوحيد المضاف لتهيأة المشروع الثاني
+  await Firebase.initializeApp(
+    name: 'secondaryApp',
+    options: secondaryFirebaseOptions, // تأكد أن هذا هو اسم المتغير داخل secondary_firebase_options.dart
+  );
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:hospital_app/screnns/patient_info_screen.dart';
@@ -215,9 +216,10 @@ class _BookingScreenState extends State<BookingScreen> {
         .listen(
           (qs) {
             if (!mounted) return;
-            final count = qs.docs
-                .where((doc) => doc.data()['status'] != 'canceled')
-                .length;
+            final count =
+                qs.docs
+                    .where((doc) => doc.data()['status'] != 'canceled')
+                    .length;
             setState(() {
               _dailyCapacity = capacity > 0 ? capacity : null;
               _queuePosition = count;
@@ -427,7 +429,11 @@ class _BookingScreenState extends State<BookingScreen> {
   String? _getAppropriateShift(DateTime date) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final isToday = DateTime(date.year, date.month, date.day).isAtSameMomentAs(today);
+    final isToday = DateTime(
+      date.year,
+      date.month,
+      date.day,
+    ).isAtSameMomentAs(today);
 
     final dayName = intl.DateFormat('EEEE', 'ar').format(date).trim();
     final schedule = widget.workingSchedule[dayName] as Map<String, dynamic>?;
@@ -441,8 +447,10 @@ class _BookingScreenState extends State<BookingScreen> {
     final hasEvening = evening != null && evening.isNotEmpty;
 
     // لليوم الحالي: تحقق من أن الفترة لم تنته
-    final morningValid = hasMorning && (!isToday || _isPeriodValid(morning, 'morning'));
-    final eveningValid = hasEvening && (!isToday || _isPeriodValid(evening, 'evening'));
+    final morningValid =
+        hasMorning && (!isToday || _isPeriodValid(morning, 'morning'));
+    final eveningValid =
+        hasEvening && (!isToday || _isPeriodValid(evening, 'evening'));
 
     if (morningValid && !eveningValid) return 'morning';
     if (!morningValid && eveningValid) return 'evening';
@@ -1028,7 +1036,8 @@ class _BookingScreenState extends State<BookingScreen> {
                                       ),
                                     ),
                                     TextSpan(
-                                      text: ' (${widget.doctorSpecialty ?? _loadedSpecialty ?? 'غير محدد'})',
+                                      text:
+                                          ' (${widget.doctorSpecialty ?? _loadedSpecialty ?? 'غير محدد'})',
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: Colors.grey[600],
@@ -1144,8 +1153,17 @@ class _BookingScreenState extends State<BookingScreen> {
                                 isDateBookable(date) &&
                                 !_isDoctorBookingDisabled();
                             final nowDay = DateTime.now();
-                            final todayDate = DateTime(nowDay.year, nowDay.month, nowDay.day);
-                            final isDateToday = DateTime(date.year, date.month, date.day).isAtSameMomentAs(todayDate);
+                            final todayDate = DateTime(
+                              nowDay.year,
+                              nowDay.month,
+                              nowDay.day,
+                            );
+                            final isDateToday = DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                            ).isAtSameMomentAs(todayDate);
+                            final isExpiredToday = isDateToday && !isBookable;
 
                             return Column(
                               children: [
@@ -1176,10 +1194,10 @@ class _BookingScreenState extends State<BookingScreen> {
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
                                         color:
-                                            isSelected
-                                                ? Colors.blue
+                                            isExpiredToday
+                                                ? Colors.red[300]!
                                                 : (isBookable
-                                                    ? Colors.transparent
+                                                    ? const Color(0xFF2FBDAF)
                                                     : Colors.grey[300]!),
                                         width: 2,
                                       ),
@@ -1190,18 +1208,23 @@ class _BookingScreenState extends State<BookingScreen> {
                                           isBookable
                                               ? (isSelected
                                                   ? Icons.check_circle
-                                                  : Icons.radio_button_unchecked)
+                                                  : Icons
+                                                      .radio_button_unchecked)
                                               : (!isBookable && isDateToday
                                                   ? Icons.lock
                                                   : Icons.block),
-                                          color: isBookable
-                                              ? (isSelected ? Colors.blue : Colors.grey)
-                                              : Colors.red,
+                                          color:
+                                              isBookable
+                                                  ? (isSelected
+                                                      ? Colors.blue
+                                                      : Colors.grey)
+                                                  : Colors.red,
                                         ),
                                         SizedBox(width: 10),
                                         Expanded(
                                           child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               if (isDateToday)
@@ -1210,9 +1233,12 @@ class _BookingScreenState extends State<BookingScreen> {
                                                   style: TextStyle(
                                                     fontSize: 11,
                                                     fontWeight: FontWeight.bold,
-                                                    color: isBookable
-                                                        ? const Color(0xFF2FBDAF)
-                                                        : Colors.red[400],
+                                                    color:
+                                                        isBookable
+                                                            ? const Color(
+                                                              0xFF2FBDAF,
+                                                            )
+                                                            : Colors.red[400],
                                                   ),
                                                 ),
                                               Text(
@@ -1385,15 +1411,18 @@ class _BookingScreenState extends State<BookingScreen> {
                                                                       .red[200]!,
                                                             ),
                                                           ),
-                                                          child: const Text(
-                                                            'مكتمل',
-                                                            style: TextStyle(
-                                                              color: Colors.red,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                              fontSize: 12,
-                                                            ),
+                                                          child: Text(
+                                                            '${_toEnglishDigits(_queuePosition?.toString() ?? '0')} من ${_toEnglishDigits(_dailyCapacity?.toString() ?? '0')}',
+                                                            style:
+                                                                const TextStyle(
+                                                                  color:
+                                                                      Colors
+                                                                          .red,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                  fontSize: 11,
+                                                                ),
                                                           ),
                                                         );
                                                       }
@@ -1521,36 +1550,78 @@ class _BookingScreenState extends State<BookingScreen> {
                                                     children: [
                                                       if (isMorningValid)
                                                         ChoiceChip(
-                                                          label: const Text("الفترة الصباحية"),
-                                                          selected: selectedShift == 'morning',
+                                                          label: const Text(
+                                                            "الفترة الصباحية",
+                                                          ),
+                                                          selected:
+                                                              selectedShift ==
+                                                              'morning',
                                                           onSelected: (_) {
-                                                            setState(() => selectedShift = 'morning');
-                                                            if (selectedDate != null) {
-                                                              _updateQueueInfo(selectedDate!);
+                                                            setState(
+                                                              () =>
+                                                                  selectedShift =
+                                                                      'morning',
+                                                            );
+                                                            if (selectedDate !=
+                                                                null) {
+                                                              _updateQueueInfo(
+                                                                selectedDate!,
+                                                              );
                                                             }
                                                           },
                                                         )
                                                       else
                                                         AbsorbPointer(
                                                           child: Container(
-                                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                            padding:
+                                                                const EdgeInsets.symmetric(
+                                                                  horizontal:
+                                                                      12,
+                                                                  vertical: 8,
+                                                                ),
                                                             decoration: BoxDecoration(
-                                                              color: Colors.red[50],
-                                                              borderRadius: BorderRadius.circular(8),
-                                                              border: Border.all(color: Colors.red[300]!),
+                                                              color:
+                                                                  Colors
+                                                                      .red[50],
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    8,
+                                                                  ),
+                                                              border: Border.all(
+                                                                color:
+                                                                    Colors
+                                                                        .red[300]!,
+                                                              ),
                                                             ),
                                                             child: Row(
-                                                              mainAxisSize: MainAxisSize.min,
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .min,
                                                               children: [
-                                                                Icon(Icons.lock, size: 14, color: Colors.red[400]),
-                                                                const SizedBox(width: 6),
+                                                                Icon(
+                                                                  Icons.lock,
+                                                                  size: 14,
+                                                                  color:
+                                                                      Colors
+                                                                          .red[400],
+                                                                ),
+                                                                const SizedBox(
+                                                                  width: 6,
+                                                                ),
                                                                 Text(
                                                                   "الفترة الصباحية",
                                                                   style: TextStyle(
-                                                                    color: Colors.red[400],
-                                                                    fontSize: 13,
-                                                                    decoration: TextDecoration.lineThrough,
-                                                                    decorationColor: Colors.red[400],
+                                                                    color:
+                                                                        Colors
+                                                                            .red[400],
+                                                                    fontSize:
+                                                                        13,
+                                                                    decoration:
+                                                                        TextDecoration
+                                                                            .lineThrough,
+                                                                    decorationColor:
+                                                                        Colors
+                                                                            .red[400],
                                                                   ),
                                                                 ),
                                                               ],
@@ -1559,13 +1630,20 @@ class _BookingScreenState extends State<BookingScreen> {
                                                         ),
                                                       if (!isMorningValid)
                                                         Padding(
-                                                          padding: const EdgeInsets.only(top: 4),
+                                                          padding:
+                                                              const EdgeInsets.only(
+                                                                top: 4,
+                                                              ),
                                                           child: Text(
                                                             'انتهت هذه الفترة',
                                                             style: TextStyle(
-                                                              color: Colors.red[400],
+                                                              color:
+                                                                  Colors
+                                                                      .red[400],
                                                               fontSize: 10,
-                                                              fontWeight: FontWeight.w500,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w500,
                                                             ),
                                                           ),
                                                         ),
@@ -1576,36 +1654,78 @@ class _BookingScreenState extends State<BookingScreen> {
                                                     children: [
                                                       if (isEveningValid)
                                                         ChoiceChip(
-                                                          label: const Text("الفترة المسائية"),
-                                                          selected: selectedShift == 'evening',
+                                                          label: const Text(
+                                                            "الفترة المسائية",
+                                                          ),
+                                                          selected:
+                                                              selectedShift ==
+                                                              'evening',
                                                           onSelected: (_) {
-                                                            setState(() => selectedShift = 'evening');
-                                                            if (selectedDate != null) {
-                                                              _updateQueueInfo(selectedDate!);
+                                                            setState(
+                                                              () =>
+                                                                  selectedShift =
+                                                                      'evening',
+                                                            );
+                                                            if (selectedDate !=
+                                                                null) {
+                                                              _updateQueueInfo(
+                                                                selectedDate!,
+                                                              );
                                                             }
                                                           },
                                                         )
                                                       else
                                                         AbsorbPointer(
                                                           child: Container(
-                                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                            padding:
+                                                                const EdgeInsets.symmetric(
+                                                                  horizontal:
+                                                                      12,
+                                                                  vertical: 8,
+                                                                ),
                                                             decoration: BoxDecoration(
-                                                              color: Colors.red[50],
-                                                              borderRadius: BorderRadius.circular(8),
-                                                              border: Border.all(color: Colors.red[300]!),
+                                                              color:
+                                                                  Colors
+                                                                      .red[50],
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    8,
+                                                                  ),
+                                                              border: Border.all(
+                                                                color:
+                                                                    Colors
+                                                                        .red[300]!,
+                                                              ),
                                                             ),
                                                             child: Row(
-                                                              mainAxisSize: MainAxisSize.min,
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .min,
                                                               children: [
-                                                                Icon(Icons.lock, size: 14, color: Colors.red[400]),
-                                                                const SizedBox(width: 6),
+                                                                Icon(
+                                                                  Icons.lock,
+                                                                  size: 14,
+                                                                  color:
+                                                                      Colors
+                                                                          .red[400],
+                                                                ),
+                                                                const SizedBox(
+                                                                  width: 6,
+                                                                ),
                                                                 Text(
                                                                   "الفترة المسائية",
                                                                   style: TextStyle(
-                                                                    color: Colors.red[400],
-                                                                    fontSize: 13,
-                                                                    decoration: TextDecoration.lineThrough,
-                                                                    decorationColor: Colors.red[400],
+                                                                    color:
+                                                                        Colors
+                                                                            .red[400],
+                                                                    fontSize:
+                                                                        13,
+                                                                    decoration:
+                                                                        TextDecoration
+                                                                            .lineThrough,
+                                                                    decorationColor:
+                                                                        Colors
+                                                                            .red[400],
                                                                   ),
                                                                 ),
                                                               ],
@@ -1614,13 +1734,20 @@ class _BookingScreenState extends State<BookingScreen> {
                                                         ),
                                                       if (!isEveningValid)
                                                         Padding(
-                                                          padding: const EdgeInsets.only(top: 4),
+                                                          padding:
+                                                              const EdgeInsets.only(
+                                                                top: 4,
+                                                              ),
                                                           child: Text(
                                                             'انتهت هذه الفترة',
                                                             style: TextStyle(
-                                                              color: Colors.red[400],
+                                                              color:
+                                                                  Colors
+                                                                      .red[400],
                                                               fontSize: 10,
-                                                              fontWeight: FontWeight.w500,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w500,
                                                             ),
                                                           ),
                                                         ),

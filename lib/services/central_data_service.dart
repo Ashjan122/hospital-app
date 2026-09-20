@@ -46,13 +46,12 @@ class CentralDataService {
     final allData = <Map<String, dynamic>>[];
     
     final facilities = await _getCachedFacilities();
-    final activeFacilities = facilities.where((f) => f['isActive'] == true).toList();
-    final facilitiesToSearch = activeFacilities.isEmpty ? facilities : activeFacilities;
-    
+    final activeFacilities = facilities.where((f) => f['available'] == true).toList();
+
     // تحميل متوازي للسرعة
     final futures = <Future>[];
-    
-    for (final facility in facilitiesToSearch) {
+
+    for (final facility in activeFacilities) {
       final facilityName = facility['name'] as String;
       final facilityId = facility['id'] as String;
       
@@ -211,7 +210,7 @@ class CentralDataService {
         'description': data['description'] ?? '',
         'address': data['address'] ?? '',
         'phoneNumber': data['phoneNumber'] ?? '',
-        'isActive': data['isActive'] ?? false,
+        'available': data['available'] ?? false,
         'reference': doc.reference,
       };
     }).toList();

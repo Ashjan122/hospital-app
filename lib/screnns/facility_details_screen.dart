@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:hospital_app/screnns/specialties_screen.dart';
 import 'package:hospital_app/screnns/lab_results_screen.dart';
+import 'package:hospital_app/screnns/specialties_screen.dart';
 
 class FacilityDetailsScreen extends StatefulWidget {
   final String facilityId;
@@ -81,26 +81,24 @@ class _FacilityDetailsScreenState extends State<FacilityDetailsScreen> {
                           disabled: true,
                         ),
 
-                        // Laboratory Results Card - تظهر فقط في مركز الرومي الطبي (وليس طب الأسنان)
-                        if (widget.facilityName.contains('الرومي الطبي') &&
-                            !widget.facilityName.contains('طب الأسنان')) ...[
-                          const SizedBox(height: 16),
-                          _buildCard(
-                            title: 'نتائج المختبر',
-                            subtitle: 'اعرض نتائج تحاليلك',
-                            icon: Icons.science,
-                            color: const Color(0xFF2FBDAF),
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      const LabResultsScreen(),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
+                        _buildCard(
+                          title: 'نتائج المختبر',
+                          subtitle: 'اعرض نتائج تحاليلك',
+                          icon: Icons.science,
+                          color: const Color(0xFF2FBDAF),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (context) => LabResultsScreen(
+                                      facilityId: widget.facilityId,
+                                      facilityName: widget.facilityName,
+                                    ),
+                              ),
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ),

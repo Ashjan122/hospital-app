@@ -200,6 +200,50 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:340060147561:android:ed4914a1d9ce8c4cdc77f8",
+        "android_client_info": {
+          "package_name": "jawda.oman.com"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "340060147561-0qa121a2cthop643u8bfk4amqk113gpj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "jawda.oman.com",
+            "certificate_hash": "f9f7300a08c23d64cbe198d69ceda8196d92289c"
+          }
+        },
+        {
+          "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB3HnHhPATbDp_gDIJVsAQ79N0cf8F68U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "340060147561-87h4kcfi5popfvgbvvkpofqg8jvq96fm.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "340060147561-74gc7ikkr56tbd8lfhm3b587b358g5u3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.labToLabAdmin"
+              }
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"

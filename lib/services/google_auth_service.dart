@@ -1,6 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class GoogleAuthService {
@@ -33,8 +33,9 @@ class GoogleAuthService {
         idToken: googleAuth.idToken,
       );
 
-      final UserCredential userCredential =
-          await _auth.signInWithCredential(credential);
+      final UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
       final User? user = userCredential.user;
 
       if (user == null) {
@@ -42,29 +43,56 @@ class GoogleAuthService {
       }
 
       // البحث بالـ UID أولاً
-      final existingByUid = await FirebaseFirestore.instance
-          .collection('patients')
-          .where('googleId', isEqualTo: user.uid)
-          .get();
+      final existingByUid =
+          await FirebaseFirestore.instance
+              .collection('patients')
+              .where('googleId', isEqualTo: user.uid)
+              .get();
 
       String patientId;
       String patientName;
 
       if (existingByUid.docs.isNotEmpty) {
         final doc = existingByUid.docs.first;
+        final data = doc.data();
+
+        if (data['isActive'] == false) {
+          await _googleSignIn.signOut();
+          await _auth.signOut();
+
+          return {
+            'success': false,
+            'message': 'حسابك غير مفعل حاليا ، يرجى التواصل مع الإدارة.',
+          };
+        }
+
         patientId = doc.id;
-        patientName = doc.data()['name'] ?? user.displayName ?? 'مريض';
+        patientName = data['name'] ?? user.displayName ?? 'مريض';
       } else {
         // البحث بالبريد الإلكتروني
-        final existingByEmail = await FirebaseFirestore.instance
-            .collection('patients')
-            .where('email', isEqualTo: user.email)
-            .get();
+        final existingByEmail =
+            await FirebaseFirestore.instance
+                .collection('patients')
+                .where('email', isEqualTo: user.email)
+                .get();
 
         if (existingByEmail.docs.isNotEmpty) {
           final doc = existingByEmail.docs.first;
+          final data = doc.data();
+
+          if (data['isActive'] == false) {
+            await _googleSignIn.signOut();
+            await _auth.signOut();
+
+            return {
+              'success': false,
+              'message': 'حسابك غير مفعل حاليا ، يرجى التواصل مع الإدارة.',
+            };
+          }
+
           patientId = doc.id;
-          patientName = doc.data()['name'] ?? user.displayName ?? 'مريض';
+          patientName = data['name'] ?? user.displayName ?? 'مريض';
+
           await FirebaseFirestore.instance
               .collection('patients')
               .doc(patientId)
@@ -76,7 +104,8 @@ class GoogleAuthService {
             await _auth.signOut();
             return {
               'success': false,
-              'message': 'لا يوجد حساب مرتبط بهذا البريد الإلكتروني. يرجى إنشاء حساب أولاً.',
+              'message':
+                  'لا يوجد حساب مرتبط بهذا البريد الإلكتروني. يرجى إنشاء حساب أولاً.',
             };
           }
 
@@ -90,7 +119,7 @@ class GoogleAuthService {
             'phone': user.phoneNumber ?? '',
             'email': user.email ?? '',
             'googleId': user.uid,
-            'password': '',
+            'isActive': true,
             'createdAt': FieldValue.serverTimestamp(),
             'verified': true,
           });
@@ -106,7 +135,11 @@ class GoogleAuthService {
       await prefs.setString('userPhone', user.phoneNumber ?? '');
       await prefs.setBool('hasRegisteredOnce', true);
 
-      return {'success': true, 'patientId': patientId, 'patientName': patientName};
+      return {
+        'success': true,
+        'patientId': patientId,
+        'patientName': patientName,
+      };
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }

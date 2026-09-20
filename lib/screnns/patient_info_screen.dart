@@ -114,7 +114,6 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
 
       if (doctorDoc.exists) {
         final d = doctorDoc.data();
-        // محاولة جلب اسم الطبيب من عدة مفاتيح محتملة بما فيها docName
         doctorName =
             (d?['docName'] ??
                     d?['name'] ??
@@ -125,6 +124,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                     d?['arabicName'])
                 ?.toString()
                 .trim();
+
         if (doctorName == null || doctorName!.isEmpty) {
           doctorName = 'طبيب';
         }
@@ -140,22 +140,6 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
 
   Future<Map<String, String>?> getAvailableTime(DateTime date) async {
     final shiftKey = widget.selectedShift ?? 'morning';
-    final dateStr = intl.DateFormat('yyyy-MM-dd').format(date);
-
-    final shiftBookings =
-        await FirebaseFirestore.instance
-            .collection('medicalFacilities')
-            .doc(widget.facilityId)
-            .collection('specializations')
-            .doc(widget.specializationId)
-            .collection('doctors')
-            .doc(widget.doctorId)
-            .collection('appointments')
-            .where('date', isEqualTo: dateStr)
-            .where('period', isEqualTo: shiftKey)
-            .get();
-
-    
 
     return {'time': '', 'period': shiftKey};
   }
@@ -183,6 +167,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
             .split(' ')
             .where((part) => part.isNotEmpty)
             .toList();
+
     if (nameParts.length < 2) {
       _showDialog("تنبيه", "يرجى إدخال الاسم (اسمين على الأقل)");
       return;
@@ -192,10 +177,14 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     String phoneDigits = patientPhone!.replaceAll(RegExp(r'[^0-9]'), '');
     if (phoneDigits.length < 10) return;
 
-    // التحقق من عدم وجود حجز سابق لنفس الشخص في نفس اليوم (بالاسم الثلاثي فقط)
+    if (!mounted) return;
+    setState(() => isLoading = true);
+
+    // التحقق من عدم وجود حجز سابق لنفس الشخص في نفس اليوم
     final checkDateStr = intl.DateFormat(
       'yyyy-MM-dd',
     ).format(widget.selectedDate);
+
     final existingBooking =
         await FirebaseFirestore.instance
             .collection('medicalFacilities')
@@ -209,7 +198,10 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
             .where('patientName', isEqualTo: patientName)
             .get();
 
+    if (!mounted) return;
+
     if (existingBooking.docs.isNotEmpty) {
+      setState(() => isLoading = false);
       _showDialog(
         "حجز موجود",
         "يوجد حجز سابق لنفس الاسم في نفس اليوم لهذا الطبيب. لا يمكن الحجز مرة اخرى",
@@ -217,16 +209,12 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       return;
     }
 
-    if (!mounted) return;
-    setState(() => isLoading = true);
-
     final result = await getAvailableTime(widget.selectedDate);
     if (!mounted) return;
 
     if (result == null) {
       if (!mounted) return;
       setState(() => isLoading = false);
-
       return;
     }
 
@@ -234,12 +222,32 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     final period = result['period']!;
     final dateStr = intl.DateFormat('yyyy-MM-dd').format(widget.selectedDate);
 
-    // Get current patient ID from SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     final patientId = prefs.getString('userId');
+    final bool bookingConfirmationRequired =
+        await _isBookingConfirmationRequired();
 
+    // جلب اسم صاحب الحساب الذي أنشأ الحجز من كولكشن patients
+    String? accountOwnerName;
+
+    if (patientId != null && patientId.isNotEmpty) {
+      try {
+        final accountDoc =
+            await FirebaseFirestore.instance
+                .collection('patients')
+                .doc(patientId)
+                .get();
+
+        if (accountDoc.exists) {
+          accountOwnerName = accountDoc.data()?['name'];
+        }
+      } catch (e) {
+        print('خطأ في جلب اسم صاحب الحساب: $e');
+      }
+    }
+
+    // حذف الحجز القديم في حالة إعادة الحجز
     if (widget.isReschedule && widget.oldBookingData != null) {
-      // حذف الحجز القديم أولاً
       await FirebaseFirestore.instance
           .collection('medicalFacilities')
           .doc(widget.oldBookingData!['facilityId'])
@@ -252,36 +260,48 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
           .delete();
     }
 
-    // إضافة الحجز الجديد
-    final bookingDocRef = await FirebaseFirestore.instance
-        .collection('medicalFacilities')
-        .doc(widget.facilityId)
-        .collection('specializations')
-        .doc(widget.specializationId)
-        .collection('doctors')
-        .doc(widget.doctorId)
-        .collection('appointments')
-        .add({
-          'patientName': patientName,
-          'patientPhone': patientPhone,
-          'patientId': patientId,
-          'date': dateStr,
-          'time': availableTime,
-          'period': period,
-          'createdAt': FieldValue.serverTimestamp(),
-          'isConfirmed': false,
-          'createdById': patientId,
-          'createdByName': 'by App',
-        });
+    try {
+      final doctorAppRef =
+          FirebaseFirestore.instance
+              .collection('medicalFacilities')
+              .doc(widget.facilityId)
+              .collection('specializations')
+              .doc(widget.specializationId)
+              .collection('doctors')
+              .doc(widget.doctorId)
+              .collection('appointments')
+              .doc();
 
-    final bookingId = bookingDocRef.id;
-    // إضافة نسخة من الحجز داخل المركز
-    await FirebaseFirestore.instance
-        .collection('medicalFacilities')
-        .doc(widget.facilityId)
-        .collection('appointments')
-        .doc(bookingId)
-        .set({
+      final facilityAppRef = FirebaseFirestore.instance
+          .collection('medicalFacilities')
+          .doc(widget.facilityId)
+          .collection('appointments')
+          .doc(doctorAppRef.id);
+
+      final counterRef = FirebaseFirestore.instance
+          .collection('medicalFacilities')
+          .doc(widget.facilityId)
+          .collection('counters')
+          .doc('appointments');
+      int? bookingNumber;
+
+      // تنفيذ Transaction لتوليد رقم تسلسلي وتجنب التضارب
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final counterSnapshot = await transaction.get(counterRef);
+
+        int nextNumber = 1;
+
+        if (counterSnapshot.exists && counterSnapshot.data() != null) {
+          nextNumber = (counterSnapshot.data()!['lastBookingNumber'] ?? 0) + 1;
+        }
+        bookingNumber = nextNumber;
+        // تحديث العداد
+        transaction.set(counterRef, {
+          'lastBookingNumber': nextNumber,
+        }, SetOptions(merge: true));
+
+        final bookingData = {
+          'bookingNumber': nextNumber,
           'patientName': patientName,
           'patientPhone': patientPhone,
           'patientId': patientId,
@@ -294,48 +314,72 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
           'time': availableTime,
           'period': period,
           'createdAt': FieldValue.serverTimestamp(),
-          'isConfirmed': false,
+          'isConfirmed': !bookingConfirmationRequired,
+          'status': bookingConfirmationRequired ? 'pending' : 'confirmed',
           'createdById': patientId,
           'createdByName': 'by App',
+          'accountOwnerName': accountOwnerName,
+        };
+
+        // حفظ البيانات في كلا المجموعتين
+        transaction.set(doctorAppRef, bookingData);
+        transaction.set(facilityAppRef, bookingData);
+      });
+
+      final bookingId = doctorAppRef.id;
+      final bookingStatus =
+          bookingConfirmationRequired ? 'pending' : 'confirmed';
+
+      if (!mounted) return;
+
+      setState(() {
+        selectedTime = availableTime;
+        showBookingSuccess = true;
+      });
+
+      // الانتقال لصفحة نجاح الحجز مباشرة (مع إبقاء مؤشر التحميل حتى اكتمال الانتقال
+      // لتجنب ظهور صفحة الإدخال للحظة قبل الانتقال)
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => BookingSuccessScreen(
+                  bookingId: bookingId,
+                  bookingNumber: bookingNumber.toString(),
+                  bookingStatus: bookingStatus,
+                  patientName: patientName!,
+                  patientPhone: patientPhone!,
+                  bookingDate: widget.selectedDate,
+                  bookingTime: availableTime,
+                  period: period,
+                  facilityName: facilityName ?? 'مركز طبي',
+                  specializationName: specializationName ?? 'تخصص طبي',
+                  doctorName: doctorName ?? 'طبيب',
+                  periodStartTime: _getPeriodStartTime(period),
+                ),
+          ),
+        ).then((_) {
+          if (mounted) {
+            setState(() => isLoading = false);
+          }
         });
+      }
 
-    if (!mounted) return;
-
-    setState(() {
-      isLoading = false;
-      selectedTime = availableTime;
-      showBookingSuccess = true;
-    });
-
-    // توليد PDF للحجز
-    print('=== بدء توليد PDF من confirmBooking ===');
-    await _generateBookingPdf(
-      dateStr: dateStr,
-      availableTime: availableTime,
-      period: period,
-      bookingId: bookingId,
-    );
-
-    // الانتقال لصفحة نجاح الحجز
-    if (mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder:
-              (context) => BookingSuccessScreen(
-                bookingId: bookingId,
-                patientName: patientName!,
-                patientPhone: patientPhone!,
-                bookingDate: widget.selectedDate,
-                bookingTime: availableTime,
-                period: period,
-                facilityName: facilityName ?? 'مركز طبي',
-                specializationName: specializationName ?? 'تخصص طبي',
-                doctorName: doctorName ?? 'طبيب',
-                periodStartTime: _getPeriodStartTime(period),
-              ),
-        ),
-      );
+      // توليد PDF فقط إذا كان الحجز مؤكد
+      if (bookingStatus == 'confirmed') {
+        _generateBookingPdf(
+          dateStr: dateStr,
+          availableTime: availableTime,
+          period: period,
+          bookingId: bookingId,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => isLoading = false);
+        _showDialog('خطأ', 'حدث خطأ أثناء حفظ الحجز: $e');
+      }
     }
   }
 
@@ -344,8 +388,8 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       final dayName =
           intl.DateFormat('EEEE', 'ar').format(widget.selectedDate).trim();
 
-      // محاولة أسماء الأيام المختلفة
       String? alternativeDayName;
+
       switch (widget.selectedDate.weekday) {
         case 1:
           alternativeDayName = 'الاثنين';
@@ -372,7 +416,6 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
 
       var schedule = widget.workingSchedule[dayName];
 
-      // إذا لم يجد الجدول، جرب الاسم البديل
       if (schedule == null && alternativeDayName != null) {
         schedule = widget.workingSchedule[alternativeDayName];
       }
@@ -383,6 +426,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
     } catch (e) {
       print('خطأ في جلب وقت بداية الفترة: $e');
     }
+
     return null;
   }
 
@@ -400,7 +444,6 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       print('الفترة: $period');
       print('معرف الحجز: $bookingId');
 
-      // التحقق من وجود البيانات المطلوبة
       if (patientName == null || patientName!.isEmpty) {
         throw Exception('اسم المريض مطلوب');
       }
@@ -409,14 +452,14 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         throw Exception('رقم الهاتف مطلوب');
       }
 
-      // جلب وقت بداية الفترة من جدول العمل
       String? periodStartTime;
+
       try {
         final dayName =
             intl.DateFormat('EEEE', 'ar').format(widget.selectedDate).trim();
 
-        // محاولة أسماء الأيام المختلفة
         String? alternativeDayName;
+
         switch (widget.selectedDate.weekday) {
           case 1:
             alternativeDayName = 'الاثنين';
@@ -440,33 +483,20 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
             alternativeDayName = 'الأحد';
             break;
         }
-        print('اسم اليوم: $dayName');
-        print('الفترة: $period');
-        print('جدول العمل: ${widget.workingSchedule}');
 
         var schedule = widget.workingSchedule[dayName];
-        print('جدول اليوم: $schedule');
 
-        // إذا لم يجد الجدول، جرب الاسم البديل
         if (schedule == null && alternativeDayName != null) {
-          print('جرب الاسم البديل: $alternativeDayName');
           schedule = widget.workingSchedule[alternativeDayName];
-          print('جدول اليوم البديل: $schedule');
         }
 
         if (schedule != null && schedule[period] != null) {
           periodStartTime = schedule[period]['start'];
-          print('وقت بداية الفترة: $periodStartTime');
-        } else {
-          print(
-            'لم يتم العثور على جدول للفترة $period في يوم $dayName أو $alternativeDayName',
-          );
         }
       } catch (e) {
         print('خطأ في جلب وقت بداية الفترة: $e');
       }
 
-      // إنشاء PDF وحفظه باسم محدد
       final pdfData = await SyncfusionPdfService.generateBookingPdfData(
         facilityName: facilityName ?? 'مركز طبي',
         specializationName: specializationName ?? 'تخصص طبي',
@@ -480,64 +510,129 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         periodStartTime: periodStartTime,
       );
 
-      // حفظ PDF في مجلد مؤقت
       final tempDir = await getTemporaryDirectory();
+
       final pdfFile = File('${tempDir.path}/booking_$bookingId.pdf');
+
       await pdfFile.writeAsBytes(pdfData);
 
       print('=== تم إنشاء PDF بنجاح ===');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('تم إنشاء PDF للحجز بنجاح'),
+          const SnackBar(
+            content: Text('تم إنشاء PDF للحجز بنجاح'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
       print('خطأ في توليد PDF: $e');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('خطأ في إنشاء PDF: ${e.toString()}'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
+            duration: Duration(seconds: 5),
           ),
         );
       }
     }
   }
 
-  Future<void> _sendOtpAndVerify() async {
-    setState(() => isLoading = true);
+  Future<bool> _isBookingConfirmationRequired() async {
     try {
+      final doc =
+          await FirebaseFirestore.instance
+              .collection('medicalFacilities')
+              .doc(widget.facilityId)
+              .get();
+
+      if (!doc.exists) {
+        return false;
+      }
+
+      return doc.data()?['requireBookingConfirmation'] == true;
+    } catch (e) {
+      print('خطأ في قراءة إعداد تأكيد الحجز للمركز: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _isOtpRequired() async {
+    try {
+      final doc =
+          await FirebaseFirestore.instance
+              .collection('appConfig')
+              .doc('version')
+              .get();
+
+      if (!doc.exists) {
+        return false;
+      }
+
+      return doc.data()?['requireOtp'] == true;
+    } catch (e) {
+      print('خطأ في قراءة إعداد OTP: $e');
+      return false;
+    }
+  }
+
+  Future<void> _sendOtpAndVerify() async {
+    try {
+      if (!mounted) return;
+      setState(() => isLoading = true);
+
+      final bool otpRequired = await _isOtpRequired();
+
+      if (!mounted) return;
+
+      if (!otpRequired) {
+        await confirmBooking();
+        return;
+      }
+
       final String phone = patientPhone!.trim();
       final String otp = SMSService.generateOTP();
+
       final result = await SMSService.sendOTP(phone, otp);
+
       if (!mounted) return;
+
       if (result['success'] == true) {
+        setState(() => isLoading = false);
+
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => OTPVerificationScreen(
-              phoneNumber: phone,
-              name: patientName ?? '',
-              password: '',
-              initialOtp: otp,
-              initialOtpCreatedAt: DateTime.now(),
-              country: Country.countries.first,
-              verificationMethod: 'sms',
-              onVerified: confirmBooking,
-            ),
+            builder:
+                (context) => OTPVerificationScreen(
+                  phoneNumber: phone,
+                  name: patientName ?? '',
+                  password: '',
+                  initialOtp: otp,
+                  initialOtpCreatedAt: DateTime.now(),
+                  country: Country.countries.first,
+                  verificationMethod: 'sms',
+                  onVerified: confirmBooking,
+                ),
           ),
         );
       } else {
-        _showDialog('خطأ', 'فشل إرسال رمز التحقق. تحقق من رقم الهاتف وحاول مجدداً.');
+        setState(() => isLoading = false);
+
+        _showDialog(
+          'خطأ',
+          'فشل إرسال رمز التحقق. تحقق من رقم الهاتف وحاول مجدداً.',
+        );
       }
     } catch (e) {
-      if (mounted) _showDialog('خطأ', 'حدث خطأ: $e');
-    } finally {
-      if (mounted) setState(() => isLoading = false);
+      if (!mounted) return;
+
+      setState(() => isLoading = false);
+
+      _showDialog('خطأ', 'حدث خطأ: $e');
     }
   }
 
@@ -547,7 +642,10 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
       builder:
           (ctx) => AlertDialog(
             title: Center(
-              child: Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
+              child: Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
             content: Text(message, textAlign: TextAlign.center),
             shape: RoundedRectangleBorder(
@@ -557,7 +655,7 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: Text("موافق", style: TextStyle(fontSize: 16)),
+                child: const Text("موافق", style: TextStyle(fontSize: 16)),
               ),
             ],
           ),
@@ -572,9 +670,9 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
         appBar: AppBar(
           title: Text(
             widget.isReschedule ? "تأجيل الحجز" : "إدخال البيانات",
-            style: TextStyle(
+            style: const TextStyle(
               fontWeight: FontWeight.bold,
-              color: const Color(0xFF2FBDAF),
+              color: Color(0xFF2FBDAF),
               fontSize: 30,
             ),
           ),
@@ -589,25 +687,22 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                       key: _formKey,
                       child: Column(
                         children: [
-                          // حقل الاسم
                           TextFormField(
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: 'الاسم *',
                               hintText: 'أدخل الاسم (اسمين على الأقل)',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(
                                 Icons.person,
-                                color: const Color(0xFF2FBDAF),
+                                color: Color(0xFF2FBDAF),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderSide: BorderSide(
-                                  color: const Color(0xFF2FBDAF),
+                                  color: Color(0xFF2FBDAF),
                                   width: 2,
                                 ),
                               ),
-                              labelStyle: TextStyle(
-                                color: const Color(0xFF2FBDAF),
-                              ),
+                              labelStyle: TextStyle(color: Color(0xFF2FBDAF)),
                             ),
                             focusNode: _nameFocus,
                             textInputAction: TextInputAction.next,
@@ -622,39 +717,40 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                               if (value == null || value.isEmpty) {
                                 return 'يرجى إدخال الاسم';
                               }
+
                               List<String> nameParts =
                                   value
                                       .trim()
                                       .split(' ')
                                       .where((part) => part.isNotEmpty)
                                       .toList();
+
                               if (nameParts.length < 2) {
                                 return 'يرجى إدخال الاسم (اسمين على الأقل)';
                               }
+
                               return null;
                             },
                           ),
+
                           const SizedBox(height: 16),
 
-                          // حقل رقم الهاتف
                           TextFormField(
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               labelText: 'رقم الهاتف *',
                               hintText: 'أدخل رقم الهاتف (10 أرقام على الأقل)',
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(
                                 Icons.phone,
-                                color: const Color(0xFF2FBDAF),
+                                color: Color(0xFF2FBDAF),
                               ),
                               focusedBorder: OutlineInputBorder(
                                 borderSide: BorderSide(
-                                  color: const Color(0xFF2FBDAF),
+                                  color: Color(0xFF2FBDAF),
                                   width: 2,
                                 ),
                               ),
-                              labelStyle: TextStyle(
-                                color: const Color(0xFF2FBDAF),
-                              ),
+                              labelStyle: TextStyle(color: Color(0xFF2FBDAF)),
                             ),
                             focusNode: _phoneFocus,
                             textInputAction: TextInputAction.done,
@@ -666,21 +762,22 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                               if (value == null || value.isEmpty) {
                                 return 'يرجى إدخال رقم الهاتف';
                               }
+
                               String phoneDigits = value.replaceAll(
                                 RegExp(r'[^0-9]'),
                                 '',
                               );
+
                               if (phoneDigits.length < 10) {
                                 return 'رقم الهاتف يجب أن يكون 10 أرقام على الأقل';
                               }
+
                               return null;
                             },
                           ),
 
-                          // مساحة فارغة لدفع الزر لأسفل
                           const Spacer(),
 
-                          // زر حجز الآن - في نهاية الشاشة
                           SizedBox(
                             width: double.infinity,
                             height: 60,
@@ -691,8 +788,8 @@ class _PatientInfoScreenState extends State<PatientInfoScreen> {
                                 }
                               },
                               style: OutlinedButton.styleFrom(
-                                side: BorderSide(
-                                  color: const Color(0xFF2FBDAF),
+                                side: const BorderSide(
+                                  color: Color(0xFF2FBDAF),
                                   width: 2,
                                 ),
                                 foregroundColor: const Color(0xFF2FBDAF),
